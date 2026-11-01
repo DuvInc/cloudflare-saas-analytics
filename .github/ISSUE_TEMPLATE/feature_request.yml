@@ -1,0 +1,19 @@
+name: Feature request
+description: Something this tool should be able to do and cannot.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to find out or do
+      description: The question you want answered, not the solution.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This keeps the cost model (no row per page view in D1, no scan of raw files on a normal dashboard load), or I have said what it costs.
+        - label: This does not weaken consent: nothing identifying is stored without an explicit yes, and Do Not Track and Global Privacy Control still win.
+        - label: This does not need a new npm dependency, or I have said why it does.

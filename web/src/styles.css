@@ -1,0 +1,319 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+/* Cloudflare SaaS Analytics uses a neutral shadcn design system: b0 neutral preset, black accent, Inter with its optical
+   size axis, inset sidebar, flat surfaces. Fonts are served from public/fonts. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/inter-latin-opsz.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/inter-latin-ext-opsz.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Inter Variable', sans-serif;
+  --font-mono: var(--font-brand-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-viz-traffic: var(--viz-traffic);
+  --color-viz-money: var(--viz-money);
+  --color-viz-signup: var(--viz-signup);
+  --color-viz-ai: var(--viz-ai);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-border: var(--warning-border);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-border: var(--success-border);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-border: var(--info-border);
+  --color-progress: var(--progress);
+  --color-progress-foreground: var(--progress-foreground);
+  --color-progress-border: var(--progress-border);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: #FFFFFF;
+  /* The brand highlighter (Tailwind yellow-300): only on what the product found, the
+     citation numbers of an answer. Never a button, a link or a text colour; black
+     stays the accent. */
+  --highlight: oklch(0.905 0.182 98.111);
+  --highlight-foreground: oklch(0.145 0 0);
+  --warning: #FFF8E1;
+  --warning-foreground: #6B4600;
+  --warning-border: #E6C76A;
+  /* Success and info complete the status set --warning already started, in the
+     same surface / foreground / border shape. Before these existed every
+     "run finished" or "analysis running" callout reached for a raw
+     Tailwind palette colour, which the design system forbids and which meant
+     six components each invented their own green. Values are tuned to sit
+     beside the neutral base palette rather than to match
+     Tailwind's emerald-50 / blue-50 exactly. */
+  --success: #EAF7F0;
+  --success-foreground: #08543A;
+  --success-border: #9CCFB4;
+  --info: #EEF4FD;
+  --info-foreground: #1F4E8C;
+  --info-border: #A8C1E8;
+  /* Work in flight stays distinct from --info: processing and an available
+     resource are different states and may appear side by side. */
+  --progress: #F3EFFD;
+  --progress-foreground: #4C3A93;
+  --progress-border: #C4B5F0;
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  /* Categorical chart palette (validated for contrast + CVD separation on white) */
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  /* Data colours (Cloudflare SaaS Analytics, 2026-10-31): the frame stays neutral, the data carries colour.
+     Traffic blue, money coral, sign-ups green, AI violet. */
+  --viz-traffic: oklch(0.62 0.17 255);
+  --viz-money: oklch(0.7 0.15 38);
+  --viz-signup: oklch(0.66 0.15 158);
+  --viz-ai: oklch(0.6 0.19 293);
+  --up: oklch(0.55 0.14 155);
+  --down: oklch(0.58 0.19 25);
+  --radius: 0.625rem; /* Official b0 default: 10px. */
+  /* Inset layout: the navigation sits on a tinted ground and the page is a
+     white card on it, so the two read as different places. */
+  --sidebar: oklch(0.965 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.925 0 0); /* Readable on the tinted sidebar ground. */
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --viz-traffic: oklch(0.72 0.14 255);
+  --viz-money: oklch(0.74 0.14 38);
+  --viz-signup: oklch(0.74 0.14 158);
+  --viz-ai: oklch(0.72 0.15 293);
+  --up: oklch(0.76 0.14 155);
+  --down: oklch(0.72 0.16 25);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: #1A0B0A;
+  --highlight: oklch(0.905 0.182 98.111);
+  --highlight-foreground: oklch(0.145 0 0);
+  --warning: #332A16;
+  --warning-foreground: #F7D98B;
+  --warning-border: #6B5728;
+  --success: #14291F;
+  --success-foreground: #86E0AE;
+  --success-border: #2E6047;
+  --info: #16233A;
+  --info-foreground: #A8C8F5;
+  --info-border: #2F4C7A;
+  --progress: #211B33;
+  --progress-foreground: #C4B5FD;
+  --progress-border: #4A3D80;
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  /* Categorical chart palette (validated for contrast + CVD separation on dark cards) */
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0); /* Official shadcn neutral sidebar surface. */
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  /* Headings: even line lengths, never one word alone under a full line. */
+  h1, h2, h3, h4 { text-wrap: balance; }
+  /* Running text: the last line never holds a single word. Browsers without
+     `pretty` wrap as before. */
+  p, li, blockquote, figcaption, dd { text-wrap: pretty; }
+  /* Text being typed never reflows under the cursor. */
+  [contenteditable] :is(h1, h2, h3, h4, p, li, blockquote, figcaption, dd) { text-wrap: wrap; }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Tailwind 4 gives buttons the default arrow. Anything clickable shows the
+     hand, so a button inside a clickable row never looks dead under the pointer. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  /* Prevent vertical rubber-band bounce, while allowing horizontal two-finger
+     swipe gestures for browser back/forward navigation. */
+  html,
+  body {
+    overscroll-behavior-y: none;
+    overscroll-behavior-x: auto;
+  }
+  /* With the inset sidebar, the page behind the rounded card is the frame's
+     tint, so no edge of the window can show white. */
+  body:has([data-variant="inset"]) {
+    @apply bg-sidebar;
+  }
+}
+
+/* Inter is self-hosted (the @font-face rules at the top). */
+:root {
+  --font-brand: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-brand-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+/* ── Chat motion ──────────────────
+   One soft curve; a status line with a light sweep; each new block of an
+   answer fades and rises 3px as it lands. Reduced motion gets none of it. */
+:root {
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.appear { animation: appear 200ms var(--ease-soft) backwards; }
+@media (prefers-reduced-motion: reduce) { .appear { animation: none; } }
+
+/* rrweb-player inside the dashboard: flat, the frame's tokens, no shadow. */
+.csa-player .rr-player { box-shadow: none; border-radius: 0; background: transparent; float: none; }
+.csa-player .rr-player__frame { background: var(--muted); }
+.csa-player .rr-controller { background: var(--background); border-top: 1px solid var(--border); border-radius: 0; }
+.csa-player .rr-timeline__time { color: var(--muted-foreground); font-variant-numeric: tabular-nums; font-size: 13px; }
+.csa-player .rr-progress { background: var(--border); border: 0; height: 4px; border-radius: 9999px; overflow: visible; }
+.csa-player .rr-progress__step { background: var(--foreground); border-radius: 9999px; }
+.csa-player .rr-progress__handler { background: var(--foreground); width: 12px; height: 12px; top: 2px; z-index: 2; }
+.csa-player .csa-timeline-clicks { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.csa-player .csa-click-tick {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2.5px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--muted-foreground);
+  box-shadow: 0 0 0 0.5px var(--background);
+  pointer-events: auto;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  margin: 0;
+  opacity: 0.75;
+  transition: transform 0.12s ease, opacity 0.12s ease, background-color 0.12s ease;
+}
+.csa-player .csa-click-tick:hover {
+  opacity: 1;
+  background: var(--foreground);
+  transform: translate(-50%, -50%) scaleY(1.3) scaleX(1.4);
+  z-index: 10;
+}
+.csa-player .rr-controller__btns button { color: var(--foreground); border-radius: 8px; font-size: 13px; }
+.csa-player .rr-controller__btns button.active { background: var(--foreground); color: var(--background); }
+.csa-player .rr-controller__btns button:hover:not(.active) { background: var(--muted); }
+.csa-player .switch input[type="checkbox"]:checked + label:before { background: var(--foreground); }
+.csa-player .switch label { color: var(--foreground); }
+
+/* Phones: the whole interface one step larger (every size is in rem), and room for the tab bar
+   and the system's home indicator. */
+@media (max-width: 767px) {
+  html { font-size: 17px; }
+  .text-xs { font-size: 0.8125rem; line-height: 1.15rem; }
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}

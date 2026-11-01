@@ -1,0 +1,6 @@
+# Local development of the Worker (`npx wrangler dev`). Copy to .dev.vars (gitignored).
+# The bypass below only works on localhost and only with ENVIRONMENT=development.
+ENVIRONMENT=development
+IDENTITY_SECRET=change-me-to-a-long-random-string
+OPERATOR_SECRET=change-me-to-another-long-random-string
+DEV_OPERATOR_EMAIL=you@example.com

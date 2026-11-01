@@ -1,0 +1,15 @@
+{
+  "product": "example-app",
+  "funnels": [
+    {
+      "id": "pricing-to-activation",
+      "name": "Pricing to activation",
+      "description": "Read the pricing page, signed up, created a first project.",
+      "steps": [
+        { "kind": "page", "value": "/pricing" },
+        { "kind": "event", "value": "signup_completed" },
+        { "kind": "event", "value": "project_created" }
+      ]
+    }
+  ]
+}

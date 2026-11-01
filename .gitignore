@@ -1,0 +1,31 @@
+node_modules/
+.DS_Store
+
+# Your deployment: resource ids and product list. Copy of wrangler.example.jsonc, made by `npm run setup`.
+wrangler.jsonc
+wrangler.dry-run.jsonc
+.setup-state.json
+
+# Real keys. Local development only; production secrets are Worker secrets.
+.env
+.env.*
+!.env.example
+.dev.vars
+!.dev.vars.example
+
+# Your visitors' data, pulled locally by `csa sync`. It belongs in your bucket and on your machine.
+/.archive/
+
+# Build output (npm run build:client, npm run build:web).
+public/t.js
+public/replay.js
+public/player.js
+public/player.css
+public/app/
+public/index.html
+public/app.js
+
+.wrangler/
+.vscode/
+.idea/
+.claude/

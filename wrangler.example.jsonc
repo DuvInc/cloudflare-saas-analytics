@@ -1,0 +1,60 @@
+{
+  /* Copy of what `npm run setup` writes to wrangler.jsonc (gitignored: it holds your resource ids).
+     Placeholders in __DOUBLE_UNDERSCORES__ are filled by the setup script. */
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "__WORKER_NAME__",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  /* The dashboard answers on workers.dev only (passkey sign-in, noindex). Collection answers on
+     each product's own host, a custom domain on a zone of your account (t.<domain> or a.<domain>). */
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    /* One per product: { "pattern": "t.example.com", "custom_domain": true } */
+    __ROUTES__
+  ],
+
+  "assets": { "directory": "public", "binding": "ASSETS", "run_worker_first": true, "not_found_handling": "single-page-application" },
+
+  /* Hourly at :17 UTC: rollups, bots, alerts; 03:17 Stripe reconciliation; 07:17 reports. */
+  "triggers": { "crons": ["17 * * * *"] },
+
+  "d1_databases": [{ "binding": "DB", "database_name": "__D1_NAME__", "database_id": "__D1_ID__", "migrations_dir": "migrations" }],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "__R2_NAME__" }],
+  "kv_namespaces": [{ "binding": "KV", "id": "__KV_ID__" }],
+
+  /* The event stream: events are written once to a Cloudflare Pipelines stream, which batches them
+     into R2 files every 5 minutes. This needs the Workers Paid plan ($5 a month). See README,
+     "Running it on the free plan". */
+  "pipelines": [{ "binding": "STREAM", "stream": "__STREAM_ID__" }],
+
+  /* Spend ceiling at the door: per IP and per product, per minute. 6,000 a minute per product caps
+     a runaway at about 8.6 million requests a day. */
+  "ratelimits": [
+    { "name": "PER_IP", "namespace_id": "__RATELIMIT_NS_1__", "simple": { "limit": 300, "period": 60 } },
+    { "name": "PER_PRODUCT", "namespace_id": "__RATELIMIT_NS_2__", "simple": { "limit": 6000, "period": 60 } }
+  ],
+
+  "vars": {
+    "OPERATOR_NAME": "__OPERATOR_NAME__",
+    "COLLECT": "on",
+    "CF_ACCOUNT_ID": "__ACCOUNT_ID__",
+    /* Optional: the public URL of the dashboard, for enrollment links printed by the CLI. */
+    "DASHBOARD_URL": "",
+    /* Bots (src/bots.ts): AI crawlers and other verified bots, read hourly from the Cloudflare
+       GraphQL analytics of every product zone. `since` is the first hour to collect. Needs the
+       CF_ANALYTICS_TOKEN secret (Zone Read + Analytics Read); leave it unset to skip bots. */
+    "BOTS": { "since": "__BOTS_SINCE__" },
+    /* One entry per product. `domain`: registrable domain (the consent cookie is set on it).
+       `collect`: the host this Worker answers on for it. `replay`: session replay of signed-in
+       users. `currency`: what revenue is summed in. */
+    "PRODUCTS": __PRODUCTS__
+  },
+
+  /* Secrets (wrangler secret put): IDENTITY_SECRET, OPERATOR_SECRET (setup generates both).
+     Optional: REPORT_WEBHOOK_URL, ALERT_WEBHOOK_URL, WEBHOOK_SECRET, AI_BASE_URL, AI_API_KEY,
+     AI_MODEL, CF_ANALYTICS_TOKEN, SERVER_TOKENS, STRIPE_KEY_<PRODUCT>, STRIPE_WEBHOOK_SECRET_<PRODUCT>. */
+  "observability": { "enabled": true }
+}

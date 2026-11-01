@@ -1,0 +1,35 @@
+name: Bug report
+description: Something does not work the way this repository says it does.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: runs
+    attributes:
+      label: The `runs` ledger rows, if this is a collection or rollup problem
+      description: >
+        `npm run csa -- health` prints them. Most pipeline bugs (a rollup that did not run,
+        a Stripe reconciliation that failed) show up there first.
+      render: text
+  - type: input
+    id: setup
+    attributes:
+      label: Commit, Node version, Cloudflare plan, number of products
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: My paste contains no secret, token or passkey enrollment link.
+          required: true
+        - label: My paste contains no event file and no visitor data.
+          required: true

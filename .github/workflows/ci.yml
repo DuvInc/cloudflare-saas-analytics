@@ -1,0 +1,32 @@
+name: CI
+
+# Pull requests only get the default read-only token, and nothing here needs more. No secret is
+# referenced, and `pull_request` (never `pull_request_target`) means a fork's code cannot reach one.
+# CI does not deploy and does not call Cloudflare: the tests run the Worker against an in-memory
+# SQLite stand-in for D1 and a Map for R2.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      # Every script must at least parse, and the setup wizard must still plan a full install.
+      - run: for f in scripts/*.mjs cli/*.mjs; do node --check "$f"; done
+      - run: printf '\n\nexample.com\n\n\n\n\n\nn\nn\n' | node scripts/setup.mjs --dry-run > /dev/null

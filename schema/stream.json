@@ -1,0 +1,259 @@
+{
+ "fields": [
+  {
+   "name": "ts",
+   "type": "int64",
+   "required": true
+  },
+  {
+   "name": "received_at",
+   "type": "int64",
+   "required": false
+  },
+  {
+   "name": "schema",
+   "type": "int64",
+   "required": false
+  },
+  {
+   "name": "product",
+   "type": "string",
+   "required": true
+  },
+  {
+   "name": "host",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "surface",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "event",
+   "type": "string",
+   "required": true
+  },
+  {
+   "name": "origin",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "level",
+   "type": "int64",
+   "required": false
+  },
+  {
+   "name": "day_hash",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "anon_id",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "user_id",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "workspace_id",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "visit_id",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "session_id",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "path",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "referrer_host",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "referrer_path",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "channel",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "ai_source",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "utm_source",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "utm_medium",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "utm_campaign",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "utm_content",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "utm_term",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "click_id_kind",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "country",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "region",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "city",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "continent",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "timezone",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "asn",
+   "type": "int64",
+   "required": false
+  },
+  {
+   "name": "as_org",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "is_datacenter",
+   "type": "bool",
+   "required": false
+  },
+  {
+   "name": "lang",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "langs",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "device",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "browser",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "browser_major",
+   "type": "int64",
+   "required": false
+  },
+  {
+   "name": "os",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "os_major",
+   "type": "int64",
+   "required": false
+  },
+  {
+   "name": "screen",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "viewport",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "engaged_ms",
+   "type": "int64",
+   "required": false
+  },
+  {
+   "name": "scroll_pct",
+   "type": "int64",
+   "required": false
+  },
+  {
+   "name": "lcp_ms",
+   "type": "float64",
+   "required": false
+  },
+  {
+   "name": "inp_ms",
+   "type": "float64",
+   "required": false
+  },
+  {
+   "name": "cls",
+   "type": "float64",
+   "required": false
+  },
+  {
+   "name": "is_bot",
+   "type": "bool",
+   "required": false
+  },
+  {
+   "name": "bot_reason",
+   "type": "string",
+   "required": false
+  },
+  {
+   "name": "props",
+   "type": "string",
+   "required": false
+  }
+ ]
+}

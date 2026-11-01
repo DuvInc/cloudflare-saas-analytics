@@ -1,0 +1,9 @@
+{
+  "product": "example-app",
+  "activation": "project_created",
+  "events": {
+    "signup_completed": "Account created (server side; emitted by identify with signup: true)",
+    "project_created": "First project created (the activation event)",
+    "invite_sent": "Teammate invited (props: role)"
+  }
+}
