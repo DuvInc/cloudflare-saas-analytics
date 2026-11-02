@@ -4,7 +4,7 @@
   1. Read the Basin sink's raw files (`raw/...`, NDJSON gzip, one every <= 5 min) whose upload
      falls in [day - 1 h, day + 1 + 30 min] and keep the events *received* that day.
   2. Sessionize (aggregate.ts), then write the day as one compacted file set:
-     `daily/<day>/part-NNN.ndjson.gz`, events sorted, visit_id filled. This is the system of record.
+     `daily/<day>/product=<id>/part-NNN.ndjson.br`, visit_id filled. This is the system of record.
   3. Upsert the `days` rows (D1), then the ledger row last: a crash leaves the day due, and the
      redo writes the same files and rows again.
   4. Delete raw files uploaded before the day's end once the previous day is also closed, so
@@ -13,7 +13,7 @@
   Raw files land under `raw/` with Hive partitions of the sink's processing time; this code only
   trusts `received_at` inside each line and each object's `uploaded` time, never the path.
 */
-import { gunzipSync } from "node:zlib";
+import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync } from "node:zlib";
 import { aggregate, sessionize, type Raw } from "./aggregate";
 import type { Env } from "./env";
 import { pool } from "./pool";
@@ -39,12 +39,18 @@ export async function listRaw(env: Env, from: number, to: number): Promise<R2Obj
   return out;
 }
 
-export async function readLines(env: Env, key: string): Promise<Raw[]> {
+export async function readLines(env: Env, key: string, required = false): Promise<Raw[]> {
   const obj = await env.BUCKET.get(key);
-  if (!obj) return [];
+  if (!obj) {
+    if (required) throw new Error(`Missing compacted object: ${key}`);
+    return [];
+  }
+  const br = key.endsWith(".br") || obj.httpMetadata?.contentEncoding === "br";
   const gz = key.endsWith(".gz") || obj.httpMetadata?.contentEncoding === "gzip" || obj.httpMetadata?.contentType === "application/gzip";
   let text: string;
-  if (gz) {
+  if (br) {
+    text = brotliDecompressSync(new Uint8Array(await obj.arrayBuffer())).toString("utf8");
+  } else if (gz) {
     // Basin writes several gzip members back to back; DecompressionStream stops at the first.
     text = gunzipSync(new Uint8Array(await obj.arrayBuffer())).toString("utf8");
   } else text = await obj.text();
@@ -56,9 +62,8 @@ export async function readLines(env: Env, key: string): Promise<Raw[]> {
   return out;
 }
 
-async function gzip(text: string): Promise<ArrayBuffer> {
-  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
-  return new Response(stream).arrayBuffer();
+function compact(text: string): Uint8Array {
+  return new Uint8Array(brotliCompressSync(new TextEncoder().encode(text), { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } }));
 }
 
 export async function eventsReceived(env: Env, from: number, to: number): Promise<{ events: Raw[]; files: R2Object[] }> {
@@ -74,7 +79,7 @@ export async function eventsReceived(env: Env, from: number, to: number): Promis
 }
 
 /**
- * Compacts settled UTC hours of `today` into `cache/hours/<today>/<HH>.ndjson.gz` so cold dashboard
+ * Compacts settled UTC hours of `today` into `cache/hours/<today>/<HH>.ndjson.br` so cold dashboard
  * reads fetch <= 24 hourly files + ~12 tail raw files instead of ~288 five-minute Basin files.
  */
 export async function compactTodayHours(env: Env, now = Date.now()): Promise<number> {
@@ -87,8 +92,8 @@ export async function compactTodayHours(env: Env, now = Date.now()): Promise<num
   const have = new Set(existing.objects.map((o) => o.key));
   const missing: number[] = [];
   for (let h = 0; h <= Math.min(maxSettledHour, 23); h++) {
-    const key = `cache/hours/${today}/${String(h).padStart(2, "0")}.ndjson.gz`;
-    if (!have.has(key)) missing.push(h);
+    const base = `cache/hours/${today}/${String(h).padStart(2, "0")}.ndjson`;
+    if (!have.has(`${base}.br`) && !have.has(`${base}.gz`)) missing.push(h);
   }
   if (!missing.length) return 0;
 
@@ -110,8 +115,8 @@ export async function compactTodayHours(env: Env, now = Date.now()): Promise<num
     const rows = buckets.get(h) ?? [];
     rows.sort((a, b) => (a.received_at - b.received_at) || ((a.ts ?? 0) - (b.ts ?? 0)));
     const body = rows.length ? rows.map((e) => JSON.stringify(e)).join("\n") + "\n" : "";
-    const key = `cache/hours/${today}/${String(h).padStart(2, "0")}.ndjson.gz`;
-    await env.BUCKET.put(key, await gzip(body), { httpMetadata: { contentType: "application/gzip" } });
+    const key = `cache/hours/${today}/${String(h).padStart(2, "0")}.ndjson.br`;
+    await env.BUCKET.put(key, compact(body), { httpMetadata: { contentType: "application/x-ndjson", contentEncoding: "br" } });
   });
   return missing.length;
 }
@@ -136,15 +141,27 @@ export async function rollupDay(env: Env, day: string): Promise<{ events: number
 
   /* Compacted files: overwrite the day's set (a redo may have fewer parts: drop the extras). */
   const written: string[] = [];
-  for (let i = 0; i * PART_EVENTS < events.length; i++) {
-    const key = `daily/${day}/part-${String(i).padStart(3, "0")}.ndjson.gz`;
-    const body = events.slice(i * PART_EVENTS, (i + 1) * PART_EVENTS).map((e) => JSON.stringify(e)).join("\n") + "\n";
-    await env.BUCKET.put(key, await gzip(body), { httpMetadata: { contentType: "application/gzip" } });
-    written.push(key);
+  const products = new Map<string, Raw[]>();
+  for (const event of events) {
+    let partition = products.get(event.product);
+    if (!partition) products.set(event.product, partition = []);
+    partition.push(event);
   }
-  const old = await env.BUCKET.list({ prefix: `daily/${day}/` });
-  const stale = old.objects.map((o) => o.key).filter((k) => !written.includes(k));
-  if (stale.length) await env.BUCKET.delete(stale);
+  for (const [product, partition] of products) {
+    for (let index = 0; index * PART_EVENTS < partition.length; index++) {
+      const key = `daily/${day}/product=${encodeURIComponent(product)}/part-${String(index).padStart(3, "0")}.ndjson.br`;
+      const body = partition.slice(index * PART_EVENTS, (index + 1) * PART_EVENTS).map((event) => JSON.stringify(event)).join("\n") + "\n";
+      await env.BUCKET.put(key, compact(body), { httpMetadata: { contentType: "application/x-ndjson", contentEncoding: "br" } });
+      written.push(key);
+    }
+  }
+  let cursor: string | undefined;
+  do {
+    const old = await env.BUCKET.list({ prefix: `daily/${day}/`, cursor, limit: 1000 });
+    const stale = old.objects.map((object) => object.key).filter((key) => !written.includes(key));
+    if (stale.length) await env.BUCKET.delete(stale);
+    cursor = old.truncated ? old.cursor : undefined;
+  } while (cursor);
 
   /* Live revenue per product for the day, from payments (webhooks + reconciliation, livemode = 1 only). */
   const rev = await env.DB.prepare("SELECT product, SUM(amount_cents) AS c FROM payments WHERE substr(created_at, 1, 10) = ? AND livemode = 1 GROUP BY product").bind(day).all<{ product: string; c: number }>();

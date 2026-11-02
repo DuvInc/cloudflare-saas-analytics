@@ -92,25 +92,32 @@ export class ReadContext {
     }, () => 1024);
   }
 
-  private async fileRaw(key: string, version = "open"): Promise<readonly Raw[]> {
-    return this.cached(`file:${key}:${version}`, () => readLines(this.env, key), (rows) => rows.length * 512 + 512);
+  private async fileRaw(key: string, version = "open", required = false): Promise<readonly Raw[]> {
+    return this.cached(`file:${key}:${version}:${required}`, () => readLines(this.env, key, required), (rows) => rows.length * 512 + 512);
   }
 
   /** Read-only view of a day's events (no per-event shallow clone; safe for funnels and activity). */
-  async dayReadOnly(day: string, today: string): Promise<readonly Raw[]> {
+  async dayReadOnly(day: string, today: string, product?: string): Promise<readonly Raw[]> {
+    const rows = await this.readDay(day, today, product);
+    return product === undefined ? rows : rows.filter(event => event.product === product);
+  }
+
+  private async readDay(day: string, today: string, product?: string): Promise<readonly Raw[]> {
     const from = Date.parse(`${day}T00:00:00Z`);
     if (day !== today) {
       const manifest = (await this.manifests()).get(day);
       if (manifest) {
         const keys = JSON.parse(manifest.files) as string[];
         if (!keys.length) return [];
-        return (await pool(keys, 6, (key) => this.fileRaw(key, manifest.ran_at))).flat();
+        const prefix = `daily/${day}/product=`;
+        const selected = product === undefined ? keys : keys.filter(key => !key.startsWith(prefix) || key.startsWith(`${prefix}${encodeURIComponent(product)}/`));
+        return (await pool(selected, 6, (key) => this.fileRaw(key, manifest.ran_at, true))).flat();
       }
       const parts: R2Object[] = [];
       let cursor: string | undefined;
       do {
         const page = await this.env.BUCKET.list({ prefix: `daily/${day}/`, cursor, limit: 1000 });
-        parts.push(...page.objects);
+        parts.push(...page.objects.filter(object => !object.key.startsWith(`daily/${day}/product=`)));
         cursor = page.truncated ? page.cursor : undefined;
       } while (cursor);
       if (parts.length) return (await pool(parts, 6, (part) => this.fileRaw(part.key))).flat();
@@ -121,9 +128,10 @@ export class ReadContext {
     if (day === today) {
       const available = await this.hourCompactions(today);
       while (contiguousHours < 24) {
-        const k = `cache/hours/${today}/${String(contiguousHours).padStart(2, "0")}.ndjson.gz`;
-        if (!available.has(k)) break;
-        hourKeys.push(k);
+        const base = `cache/hours/${today}/${String(contiguousHours).padStart(2, "0")}.ndjson`;
+        const key = available.has(`${base}.br`) ? `${base}.br` : `${base}.gz`;
+        if (!available.has(key)) break;
+        hourKeys.push(key);
         contiguousHours++;
       }
     }
@@ -139,8 +147,8 @@ export class ReadContext {
   }
 
   /** Mutable copy of a day's events (safe for sessionize() which sets visit_id in place). */
-  async day(day: string, today: string): Promise<Raw[]> {
-    const events = await this.dayReadOnly(day, today);
+  async day(day: string, today: string, product?: string): Promise<Raw[]> {
+    const events = await this.dayReadOnly(day, today, product);
     return events.map((event) => ({ ...event }));
   }
 }

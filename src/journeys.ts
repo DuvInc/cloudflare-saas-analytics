@@ -17,7 +17,7 @@ export type Step = { kind: "page" | "event"; value: string; paths?: string[] };
 export async function periodEvents(env: Env, product: string, days: number, context = new ReadContext(env)): Promise<Raw[]> {
   const today = utcDay(Date.now());
   const list = Array.from({ length: days }, (_, i) => utcDay(Date.now() - (days - 1 - i) * 86400_000));
-  const parts = await pool(list, 6, async (day) => (await dayEvents(env, day, today, context)).filter((event) => event.product === product && !event.is_bot));
+  const parts = await pool(list, 6, async (day) => (await dayEvents(env, day, today, context, product)).filter((event) => !event.is_bot));
   return parts.flat().sort((a, b) => a.received_at - b.received_at);
 }
 
@@ -140,7 +140,7 @@ export async function computeProductFunnels(env: Env, defs: FunnelDef[], days: n
     const CHUNK = 6;
     for (let offset = 0; offset < list.length; offset += CHUNK) {
       const slice = list.slice(offset, offset + CHUNK);
-      const batch = await Promise.all(slice.map((day) => dayEventsReadOnly(env, day, today, context)));
+      const batch = await Promise.all(slice.map((day) => dayEventsReadOnly(env, day, today, context, productIds.length === 1 ? productIds[0] : undefined)));
       for (const rawDay of batch) {
         if (!rawDay.length) continue;
         const relevant = rawDay.filter((e) => !e.is_bot && byProduct.has(e.product));
@@ -207,7 +207,7 @@ export async function personActivity(env: Env, product: string, userId: string, 
   const CHUNK = 6;
   for (let offset = 0; offset < newestFirst.length && collected.length < 800; offset += CHUNK) {
     const slice = newestFirst.slice(offset, offset + CHUNK);
-    const batch = await Promise.all(slice.map((day) => dayEventsReadOnly(env, day, today, context)));
+    const batch = await Promise.all(slice.map((day) => dayEventsReadOnly(env, day, today, context, product)));
     for (const dayEvs of batch) {
       if (!dayEvs.length) continue;
       const matches = dayEvs.filter((e) => e.product === product && !e.is_bot && personOf(e, alias) === me);

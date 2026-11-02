@@ -79,6 +79,26 @@ The decision that shapes the rest: **events are written once to a Cloudflare Pip
 
 The dashboard is a React app in `web/` served by the same Worker, on `workers.dev` only. Collection answers on your own hosts (`t.example.com`): first-party, so no third-party domain to list. Content blockers can still match the script name or path, so expect some undercount.
 
+### Compacted storage
+
+New closed days use Brotli level 4, partitioned by product under
+`daily/<day>/product=<URL-encoded-id>/part-NNN.ndjson.br`. The existing `runs.files`
+manifest remains the source of truth and is published only after all parts and D1 rows succeed.
+Product-specific filters, activity and funnels fetch only that product's parts. Account-wide
+queries still read every product. A missing committed part raises an error rather than returning
+an incomplete result; unfinished partitions without a successful manifest fall back to raw data.
+
+New settled hourly files use `.ndjson.br`; existing `.ndjson.gz` hours and historical mixed
+daily gzip files remain readable and are not rewritten. The CLI decompresses either format
+into private temporary files inside `.archive/events/`, atomically replaces the local Parquet,
+and cleans staging after success or failure. Bots, replays, collection, retention and D1 schema
+are unchanged. There is no new service or subscription. Partitioning adds one PUT per product
+part instead of one mixed part and can add GETs to account-wide reads.
+
+Deploy readers and CLI together with the new writer. A rollback after the first Brotli write
+must retain Brotli readers; do not roll back to an older gzip-only Worker or CLI. Reverting the
+writer to gzip is safe while keeping both readers. No historical backfill is needed.
+
 ## Try it
 
 **Look first, no account.** The dashboard runs against invented data:

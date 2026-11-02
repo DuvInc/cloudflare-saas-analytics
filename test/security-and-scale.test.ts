@@ -324,8 +324,8 @@ describe("Hourly compaction, empty-manifest zero-I/O, and streaming funnels", ()
 
     const compacted = await compactTodayHours(env, now);
     expect(compacted).toBe(3); // 00, 01, 02
-    expect(objects.has("cache/hours/2026-11-01/00.ndjson.gz")).toBe(true);
-    expect(objects.has("cache/hours/2026-11-01/02.ndjson.gz")).toBe(true);
+    expect(objects.has("cache/hours/2026-11-01/00.ndjson.br")).toBe(true);
+    expect(objects.has("cache/hours/2026-11-01/02.ndjson.br")).toBe(true);
 
     // Delete raw/h0 to prove ReadContext reads settled hours from cache/hours/ rather than re-reading old raw/ files
     objects.delete("raw/h0.ndjson.gz");

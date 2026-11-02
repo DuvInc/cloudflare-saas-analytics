@@ -15,8 +15,8 @@ describe("rollupDay", () => {
     });
     const r = await rollupDay(env, day);
     expect(r.events).toBe(3);
-    expect(r.files).toEqual([`daily/${day}/part-000.ndjson.gz`]);
-    expect(objects.has(`daily/${day}/part-000.ndjson.gz`)).toBe(true);
+    expect(r.files).toEqual([`daily/${day}/product=acme/part-000.ndjson.br`]);
+    expect(objects.has(`daily/${day}/product=acme/part-000.ndjson.br`)).toBe(true);
     const insert = statements.find((s) => s.sql.includes("INSERT OR REPLACE INTO days") && s.args[1] === "*")!;
     expect(insert.args.slice(0, 6)).toEqual(["acme", "*", day, 3, 2, 2]); // views, visitors, visits
     expect(JSON.parse(insert.args[17] as string)).toEqual([{ k: "ChatGPT", views: 0, visits: 1, visitors: 1 }]);

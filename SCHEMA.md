@@ -30,7 +30,7 @@ Local exports are outside the remote retention lifecycle; they require explicit 
 | Data | Store | Kept | Read with |
 |---|---|---|---|
 | Raw events, today and yesterday | R2 `raw/*.json.gz` (Basin sink, a file every ≤ 5 min) | until the day is compacted | `csa today`, `csa sql ... --live` |
-| Events of a closed day, visits filled in | R2 `daily/<day>/part-NNN.ndjson.gz`, then `.archive/events/<day>.parquet` locally | 25 months | view `events` after `csa sync` |
+| Events of a closed day, visits filled in | R2 `daily/<day>/product=<id>/part-NNN.ndjson.br` (older days: mixed `part-NNN.ndjson.gz`), then `.archive/events/<day>.parquet` locally | 25 months | view `events` after `csa sync` |
 | Daily numbers per product and host | D1 `days` | forever | view `days`, dashboard |
 | People (product accounts), their origin and LTV | D1 `people` | while the account exists | view `people` |
 | Which anonymous identity became which person | D1 `identities` | same | view `identities` |

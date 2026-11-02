@@ -27,6 +27,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { connectArchive, rows, table } from "./archive.mjs";
+import { R2Reader } from "./r2-read.mjs";
+import { syncCompactedDay } from "./compact-sync.mjs";
 import { deployment } from "./config.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -67,6 +69,7 @@ async function sync() {
   for (const t of TABLES) writeFileSync(path.join(CACHE, "d1", `${t}.json`), JSON.stringify(d1(`SELECT * FROM ${t}${t === "runs" ? " WHERE job != 'alert'" : ""}`)));
   const ledger = d1(`SELECT key, files, ran_at FROM runs WHERE job = 'rollup' AND status = 'ok' AND key >= '${since}' ORDER BY key`);
   const db = await duck({ remote: true });
+  const reader = new R2Reader(ROOT);
   let pulled = 0;
   for (const r of ledger) {
     const out = path.join(CACHE, "events", `${r.key}.parquet`);
@@ -74,7 +77,7 @@ async function sync() {
     if (existsSync(out) && existsSync(stamp) && readFileSync(stamp, "utf8") === r.ran_at) continue;
     const files = JSON.parse(r.files);
     if (!files.length) continue;
-    await db.run(`COPY (SELECT * FROM read_json([${files.map((f) => sq(`r2://${BUCKET}/${f}`)).join(",")}], format = 'newline_delimited', compression = 'gzip', columns = ${COLUMNS})) TO ${sq(out)} (FORMAT parquet, COMPRESSION zstd)`);
+    await syncCompactedDay(db, reader, files, out, COLUMNS);
     writeFileSync(stamp, r.ran_at);
     pulled++;
   }

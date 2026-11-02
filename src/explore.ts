@@ -66,17 +66,17 @@ export function matches(f: Filter, v: Visit, evs: Raw[]): boolean {
   return op === "not" ? !hit : hit;
 }
 
-export async function dayEvents(env: Env, day: string, today: string, context = new ReadContext(env)): Promise<Raw[]> {
-  return context.day(day, today);
+export async function dayEvents(env: Env, day: string, today: string, context = new ReadContext(env), product?: string): Promise<Raw[]> {
+  return context.day(day, today, product);
 }
 
-export async function dayEventsReadOnly(env: Env, day: string, today: string, context = new ReadContext(env)): Promise<readonly Raw[]> {
-  return context.dayReadOnly(day, today);
+export async function dayEventsReadOnly(env: Env, day: string, today: string, context = new ReadContext(env), product?: string): Promise<readonly Raw[]> {
+  return context.dayReadOnly(day, today, product);
 }
 
 /** The product's row of one day, for the visits matching every filter. */
 async function filteredDay(env: Env, product: string, host: string, day: string, today: string, filters: Filter[], context: ReadContext): Promise<DayRow | null> {
-  const all = (await dayEvents(env, day, today, context)).filter((e) => e.product === product);
+  const all = await dayEvents(env, day, today, context, product);
   if (!all.length) return null;
   const visits = sessionize(all);
   const byVisit = new Map<string, Raw[]>();
