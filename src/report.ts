@@ -194,15 +194,18 @@ export async function healthIssues(env: Env, now = Date.now()): Promise<Issue[]>
   const any = await env.DB.prepare("SELECT 1 FROM days LIMIT 1").first();
   if (any && !ok2) issues.push({ id: `rollup_missing:${yesterday2}`, product: "*", message: `no rollup for ${yesterday2}` });
 
+  /* Yesterday has no row until its rollup ran (first at 01:17 UTC): before that, no row is not zero views (false alerts on all products, 2026-11-05). */
+  const yesterday = utcDay(now - 86400_000);
+  const rolledUp = await env.DB.prepare("SELECT 1 FROM runs WHERE job = 'rollup' AND key = ? AND status = 'ok'").bind(yesterday).first();
+
   for (const p of products(env.PRODUCTS)) {
     /* Silent collection: traffic on most of the last 7 days, none yesterday. */
     const week = await env.DB.prepare("SELECT day, views FROM days WHERE product = ? AND host = '*' AND day >= ? ORDER BY day").bind(p.id, utcDay(now - 8 * 86400_000)).all<{ day: string; views: number }>();
     const rows = week.results ?? [];
-    const yesterday = utcDay(now - 86400_000);
     const before = rows.filter((r) => r.day < yesterday);
     const avg = before.length ? before.reduce((s, r) => s + r.views, 0) / before.length : 0;
     const y = rows.find((r) => r.day === yesterday)?.views ?? 0;
-    if (before.length >= 4 && avg >= 10 && y === 0) issues.push({ id: `silent:${p.id}:${yesterday}`, product: p.id, message: `${p.name}: no pageview yesterday (average ${Math.round(avg)}/day): tracker or domain broken?` });
+    if (rolledUp && before.length >= 4 && avg >= 10 && y === 0) issues.push({ id: `silent:${p.id}:${yesterday}`, product: p.id, message: `${p.name}: no pageview yesterday (average ${Math.round(avg)}/day): tracker or domain broken?` });
 
     /* Events that are not in the product's catalog. */
     const cat = catalogs[p.id];
