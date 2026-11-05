@@ -11,7 +11,7 @@ import { href, navigate, useRoute } from "@/lib/route";
 import { useData } from "@/lib/use-data";
 import { PageHeader } from "@/components/shell";
 import { PeriodControl, PERIODS, periodFrom } from "@/components/period";
-import { ChangeBadge, fillDays, MiniBars, Spark, TONE, TrendPanel, type Hourly } from "@/components/trend";
+import { ChangeBadge, fillDays, Spark, TONE, TrendPanel, type Hourly } from "@/components/trend";
 import { ProductIcon } from "@/components/icons";
 import { ErrorNote } from "@/components/notes";
 import { metrics } from "@/screens/metrics";
@@ -36,6 +36,7 @@ function Figure({ label, value, color }: { label: string; value: string; color?:
 function ProductCard({ p, from, days }: { p: P; from: string; days: number }) {
   const series = fillDays(p.series, from, days);
   const t = p.totals;
+  const maxRevenue = Math.max(...series.map((day) => day.revenue_cents), 0);
   return (
     <a
       href={href(`/p/${p.id}`, { days })}
@@ -68,9 +69,16 @@ function ProductCard({ p, from, days }: { p: P; from: string; days: number }) {
           <Figure label="AI reads" value={num(p.aiReads ?? 0)} color={TONE.ai} />
         </div>
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="relative">
+        {days > 1 && t.revenue_cents > 0 && <svg aria-hidden="true" viewBox="0 0 400 56" preserveAspectRatio="none" className="absolute inset-0 h-14 w-full">
+          {series.map((point, index) => {
+            const barWidth = Math.min(16, 120 / (series.length - 1));
+            const height = maxRevenue > 0 ? (point.revenue_cents / maxRevenue) * 52 : 0;
+            const center = 2 + index * 396 / (series.length - 1);
+            return height > 0 && <rect key={point.day} x={Math.max(0, Math.min(400 - barWidth, center - barWidth / 2))} y={54 - height} width={barWidth} height={height} rx={2} fill={TONE.money} fillOpacity={0.55} />;
+          })}
+        </svg>}
         <Spark series={days === 1 && p.hours?.known ? p.hours.visits.slice(0, new Date().getUTCHours() + 1) : series.map((x) => x.visitors)} color={TONE.traffic} width={400} height={56} className="h-14 w-full" />
-        {days > 1 && t.revenue_cents > 0 && <MiniBars series={series.map((x) => x.revenue_cents)} color={TONE.money} width={400} height={20} className="h-5 w-full" />}
       </div>
     </a>
   );

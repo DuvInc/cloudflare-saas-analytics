@@ -4,6 +4,7 @@
 import { Bot, Globe, Link2, Mail, Megaphone, Monitor, MousePointerClick, Search, Server, Share2, Smartphone, Tablet, Video } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { botLogo } from "@/lib/bot-icon";
 
 export function ProductIcon({ id, name, className }: { id: string; name: string; className?: string }) {
   const [failed, setFailed] = useState(false);
@@ -34,17 +35,6 @@ function Img({ src, fallback }: { src: string; fallback: React.ReactNode }) {
 
 const DOT = <span className="size-4 shrink-0 rounded-full bg-muted" />;
 
-/* Who operates a bot, for its icon. */
-const BOT_OWNERS: [RegExp, string][] = [
-  [/^(GPTBot|OAI-SearchBot|ChatGPT-User|Operator)/i, "openai.com"], [/^(Claude|anthropic)/i, "anthropic.com"], [/^Perplexity/i, "perplexity.ai"],
-  [/^(Google|Gemini)/i, "google.com"], [/^(bingbot|BingPreview)/i, "bing.com"], [/^(meta-|facebook|FacebookBot)/i, "meta.com"],
-  [/^Amazon|^Amzn/i, "amazon.com"], [/^Applebot/i, "apple.com"], [/^Bytespider/i, "bytedance.com"], [/^CCBot/i, "commoncrawl.org"],
-  [/^(DuckDuck|DuckAssist)/i, "duckduckgo.com"], [/^MistralAI/i, "mistral.ai"], [/^AhrefsBot/i, "ahrefs.com"], [/^SemrushBot/i, "semrush.com"],
-  [/^YandexBot/i, "yandex.com"], [/^LinkedInBot/i, "linkedin.com"], [/^Slackbot/i, "slack.com"], [/^Discordbot/i, "discord.com"],
-  [/^TwitterBot/i, "x.com"], [/^TelegramBot/i, "telegram.org"], [/^WhatsApp/i, "whatsapp.com"], [/^PetalBot/i, "petalsearch.com"],
-  [/^DataForSeo/i, "dataforseo.com"], [/^cohere/i, "cohere.com"], [/^YouBot/i, "you.com"], [/^Baiduspider/i, "baidu.com"],
-];
-
 /** The icon of a breakdown value, by dimension. */
 export function ValueIcon({ dim, k }: { dim: string; k: string }) {
   switch (dim) {
@@ -56,7 +46,7 @@ export function ValueIcon({ dim, k }: { dim: string; k: string }) {
     case "device": { const I = k === "mobile" ? Smartphone : k === "tablet" ? Tablet : Monitor; return <I className="size-4 shrink-0 text-muted-foreground" />; }
     case "browser": return BROWSERS[k] ? <Img src={favicon(BROWSERS[k]!)} fallback={DOT} /> : DOT;
     case "os": return OS[k] ? <Img src={favicon(OS[k]!)} fallback={DOT} /> : DOT;
-    case "bot": { const d = BOT_OWNERS.find(([re]) => re.test(k))?.[1]; return d ? <Img src={favicon(d)} fallback={<Bot className="size-4 shrink-0 text-muted-foreground" />} /> : <Bot className="size-4 shrink-0 text-muted-foreground" />; }
+    case "bot": { const logo = botLogo(k); return logo ? <Img src={logo} fallback={<Bot className="size-4 shrink-0 text-muted-foreground" />} /> : <Bot className="size-4 shrink-0 text-muted-foreground" />; }
     default: return null;
   }
 }

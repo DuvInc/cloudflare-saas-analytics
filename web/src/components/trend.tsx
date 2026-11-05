@@ -2,13 +2,13 @@
   The figures of a screen and the curve of the one chosen, in one bordered panel. Each figure has
   its colour (traffic blue, money coral, sign-ups green, AI violet), a mini curve of the period and
   its change against the period before; the chosen one is underlined in its colour. The big chart
-  draws the chosen figure, revenue as coral bars behind it, sign-up days as green dots, and today
+  draws the chosen figure, revenue as coral bars behind it, and today
   (still counting) as a dashed end.
 */
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Area, Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts";
 import type { Point } from "@/lib/api";
-import { change, compact, day, dayFull, money, num } from "@/lib/fmt";
+import { change, compact, day, dayFull, money } from "@/lib/fmt";
 import { sparklinePath } from "@/lib/sparkline";
 import { cn } from "@/lib/utils";
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
@@ -128,7 +128,7 @@ const COLS: Record<number, string> = {
   8: "grid-cols-2 @2xl:grid-cols-4",
 };
 
-type Row = { day: string; label?: string; live: boolean; v: number | null; tail: number | null; money: number; signups: number };
+type Row = { day: string; label?: string; live: boolean; v: number | null; tail: number | null; money: number };
 
 /** Today hour by hour, in the browser's time zone: the UTC buckets shifted. Traffic only. */
 export type Hourly = { views: number[]; visits: number[]; known: boolean };
@@ -138,7 +138,7 @@ function hourRows(h: Hourly, key: string): Row[] {
   return Array.from({ length: 24 }, (_, local) => {
     const utc = (((local - offset) % 24) + 24) % 24;
     const v = (key === "views" ? h.views : h.visits)[Math.round(utc)] ?? 0;
-    return { day: "", label: `${String(local).padStart(2, "0")}:00`, live: local === now, v: local <= now ? v : null, tail: null, money: 0, signups: 0 };
+    return { day: "", label: `${String(local).padStart(2, "0")}:00`, live: local === now, v: local <= now ? v : null, tail: null, money: 0 };
   });
 }
 
@@ -162,13 +162,12 @@ export function TrendPanel({
   const hours = !!hourly?.known && (metric?.tone ?? "traffic") === "traffic";
   const data: Row[] = hours ? hourRows(hourly!, metric?.key === "views" ? "views" : "visits") : metric?.of ? series.map((p, i) => {
     const v = metric.of!(p);
-    return { day: p.day, live: p.live, v: liveAt >= 0 && i >= liveAt ? null : v, tail: liveAt >= 0 && i >= liveAt - 1 ? v : null, money: (p.revenue_cents ?? 0) / 100, signups: p.signups ?? 0 };
+    return { day: p.day, live: p.live, v: liveAt >= 0 && i >= liveAt ? null : v, tail: liveAt >= 0 && i >= liveAt - 1 ? v : null, money: (p.revenue_cents ?? 0) / 100 };
   }) : [];
   if (!hours && liveAt === 0 && data[0]) data[0].v = data[0].tail;
   /* Money is always bars: the chosen figure when it is revenue, else behind the traffic curve. */
   const moneyChosen = metric?.key === "revenue";
   const showMoney = !hours && !moneyChosen && data.some((d) => d.money > 0);
-  const showSignups = !hours && metric?.key !== "signups" && data.some((d) => d.signups > 0);
   const config = { v: { label: metric?.label ?? "", color }, money: { label: "Revenus", color: TONE.money } } satisfies ChartConfig;
   const n = metrics?.length ?? placeholders;
   const fmt = (v: number) => (metric?.format ? metric.format(v) : compact(v));
@@ -205,7 +204,6 @@ export function TrendPanel({
                       <span className="text-muted-foreground first-letter:uppercase">{hours ? `Today, ${p.label}` : dayFull(p.day)}{p.live ? " · so far" : ""}</span>
                       <Line2 color={color} label={metric?.label ?? ""} value={fmt(v)} />
                       {showMoney && p.money > 0 && <Line2 color={TONE.money} label="Revenue" value={money(p.money * 100)} />}
-                      {showSignups && p.signups > 0 && <Line2 color={TONE.signup} label="Sign-ups" value={num(p.signups)} />}
                     </div>
                   );
                 }}
@@ -214,12 +212,7 @@ export function TrendPanel({
               {moneyChosen && <Bar yAxisId="v" dataKey="money" fill="var(--color-money)" radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false} />}
               {!moneyChosen && <Area yAxisId="v" dataKey="v" type="monotone" stroke="var(--color-v)" strokeWidth={2} fill="var(--color-v)" fillOpacity={0.1} isAnimationActive={false} connectNulls={false}
                 activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--background)", fill: "var(--color-v)" }}
-                dot={showSignups ? (props: any) => {
-                  const p = props.payload as Row;
-                  return p.signups > 0 && props.cy != null
-                    ? <circle key={props.index} cx={props.cx} cy={props.cy} r={4.5} fill={TONE.signup} stroke="var(--background)" strokeWidth={2} />
-                    : <g key={props.index} />;
-                } : false} />}
+                dot={false} />}
               {!moneyChosen && <Line yAxisId="v" dataKey="tail" type="monotone" stroke="var(--color-v)" strokeWidth={2} strokeDasharray="4 4" dot={false} activeDot={false} isAnimationActive={false} connectNulls={false} />}
             </ComposedChart>
           </ChartContainer>
