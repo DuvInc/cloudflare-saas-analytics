@@ -46,7 +46,7 @@ export function PaymentsScreen({ me }: { me: Me }) {
                 <TableHead className="hidden w-28 @xl:table-cell">Product</TableHead>
                 <TableHead className="hidden w-48 @2xl:table-cell">Origin</TableHead>
                 <TableHead className="hidden w-28 @3xl:table-cell">Item</TableHead>
-                <TableHead className="w-28 text-right">Amount</TableHead>
+                <TableHead className="w-20 text-right @md:w-28">Amount</TableHead>
                 <TableHead className="w-32 pr-4 text-right">Date</TableHead>
               </TableRow>
             </TableHeader>

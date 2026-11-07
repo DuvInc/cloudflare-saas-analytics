@@ -161,7 +161,7 @@ export function PageHeader({ title, meta, children, className }: { title: React.
         <h1 className="font-heading text-2xl font-semibold tracking-tight">{title}</h1>
         {meta && <div className="text-sm text-muted-foreground">{meta}</div>}
       </div>
-      {children && <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>}
+      {children && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{children}</div>}
     </div>
   );
 }

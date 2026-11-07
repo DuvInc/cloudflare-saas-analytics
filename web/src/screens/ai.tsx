@@ -180,7 +180,7 @@ export function AiScreen({ me }: { me: Me }) {
           <TableHeader>
             <TableRow>
               <TableHead className="pl-4">Bot</TableHead>
-              <TableHead className="w-40">Family</TableHead>
+              <TableHead className="hidden w-40 @md:table-cell">Family</TableHead>
               <TableHead className="hidden @3xl:table-cell">Most read</TableHead>
               <TableHead className="hidden w-20 text-right @xl:table-cell">Days</TableHead>
               <TableHead className="hidden w-24 text-right @xl:table-cell">Errors</TableHead>
@@ -191,7 +191,7 @@ export function AiScreen({ me }: { me: Me }) {
             {d ? d.bots.map((b) => (
               <TableRow key={b.bot} className={cn("cursor-pointer", bot === b.bot && "bg-muted/50")} onClick={() => patchParams({ bot: bot === b.bot ? null : b.bot })}>
                 <TableCell className="pl-4"><span className="flex min-w-0 items-center gap-2.5"><ValueIcon dim="bot" k={b.bot} /><span className="truncate font-medium">{b.bot}</span></span></TableCell>
-                <TableCell><span className="flex items-center gap-1.5 text-muted-foreground"><span className="size-2 shrink-0 rounded-full" style={{ background: FAMILY[b.family].color }} /><span className="truncate">{FAMILY[b.family].label}</span></span></TableCell>
+                <TableCell className="hidden @md:table-cell"><span className="flex items-center gap-1.5 text-muted-foreground"><span className="size-2 shrink-0 rounded-full" style={{ background: FAMILY[b.family].color }} /><span className="truncate">{FAMILY[b.family].label}</span></span></TableCell>
                 <TableCell className="hidden truncate font-mono text-[13px] text-muted-foreground @3xl:table-cell" title={b.pages.map((p) => p.k).join("  ")}>{b.pages.slice(0, 3).map((p) => p.k).join("  ") || "–"}</TableCell>
                 <TableCell className="hidden text-right tabular-nums text-muted-foreground @xl:table-cell">{b.days}</TableCell>
                 <TableCell className={cn("hidden text-right tabular-nums @xl:table-cell", b.errors ? "text-down" : "text-muted-foreground")}>{b.errors ? num(b.errors) : "–"}</TableCell>

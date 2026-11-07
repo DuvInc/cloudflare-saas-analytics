@@ -211,11 +211,11 @@ export function HealthScreen() {
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-40 pl-4">Job</TableHead>
-                <TableHead className="w-32">Key</TableHead>
-                <TableHead className="w-24">Status</TableHead>
+                <TableHead className="w-32 pl-4 @md:w-40">Job</TableHead>
+                <TableHead className="hidden w-32 @md:table-cell">Key</TableHead>
+                <TableHead className="w-20 @md:w-24">Status</TableHead>
                 <TableHead className="hidden @2xl:table-cell">Note</TableHead>
-                <TableHead className="w-32 pr-4 text-right">When</TableHead>
+                <TableHead className="w-24 pr-4 text-right @md:w-32">When</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -223,7 +223,7 @@ export function HealthScreen() {
                 ? data.runs.map((r) => (
                   <TableRow key={`${r.job}${r.key}${r.ran_at}`}>
                     <TableCell className="truncate pl-4">{JOB[r.job] ?? r.job}</TableCell>
-                    <TableCell className="truncate tabular-nums text-muted-foreground">{r.key}</TableCell>
+                    <TableCell className="hidden truncate tabular-nums text-muted-foreground @md:table-cell">{r.key}</TableCell>
                     <TableCell className={r.status === "ok" ? "text-up" : "text-down"}>{r.status === "ok" ? "OK" : "Failed"}</TableCell>
                     <TableCell className="hidden truncate text-muted-foreground @2xl:table-cell" title={r.note ?? ""}>{r.note}</TableCell>
                     <TableCell className="pr-4 text-right text-muted-foreground">{ago(r.ran_at)}</TableCell>

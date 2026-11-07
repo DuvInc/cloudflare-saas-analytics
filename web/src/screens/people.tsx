@@ -27,6 +27,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Person = { product: string; user_id: string; email: string | null; name: string | null; plan: string | null; created_at: string; last_seen_at: string | null; ltv_cents: number; currency: string | null; attribution_method: string | null; channel: string | null; ai_source: string | null; referrer_host: string | null; country: string | null; replays: number };
 type Activity = { at: number; event: string; origin: string; host: string; path: string; channel: string; ai_source: string | null; referrer_host: string | null; country: string; city: string | null; device: string; browser: string; os: string; engaged_ms: number | null; props: string | null };
+const SORTS: Record<string, string> = { newest: "Newest", "-last_seen": "Last seen", "-replays": "Most replays" };
 const METHOD: Record<string, string> = { cookie: "Cookie (exact)", hash: "Same device, same day", utm_on_signup: "UTM at sign-up", none: "Unknown" };
 
 function SortableHead({ label, sortKey, sort, className }: { label: string; sortKey: string; sort: string; className?: string }) {
@@ -123,8 +124,8 @@ function PersonSheet({ me, open, tab, onClose }: { me: Me; open: string | null; 
   const label = p?.name || p?.email || userId;
   return (
     <Sheet open={!!open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full gap-0 data-[side=right]:sm:max-w-3xl">
-        <SheetHeader className="border-b pr-12">
+      <SheetContent className="gap-0 data-[side=right]:w-full data-[side=right]:border-l-0 data-[side=right]:sm:max-w-3xl data-[side=right]:sm:border-l">
+        <SheetHeader className="border-b pt-[max(1rem,env(safe-area-inset-top))] pr-14 sm:pr-12">
           <div className="flex items-center gap-3">
             <Avatar seed={userId} label={label} className="size-10 text-sm" />
             <div className="flex min-w-0 flex-col">
@@ -144,8 +145,8 @@ function PersonSheet({ me, open, tab, onClose }: { me: Me; open: string | null; 
               ))}
             </div>
           )}
-          <Tabs value={tab} onValueChange={(v) => patchParams({ tab: v === "profile" ? null : String(v) })} className="mt-2 -mb-2">
-            <TabsList variant="line" className="h-9">
+          <Tabs value={tab} onValueChange={(v) => patchParams({ tab: v === "profile" ? null : String(v) })} className="-mx-4 mt-2 -mb-2 min-w-0 sm:mx-0">
+            <TabsList variant="line" className="h-11 w-full justify-start overflow-x-auto px-4 [scrollbar-width:none] sm:h-9 sm:px-0 [&>*]:flex-none [&>*]:px-3 sm:[&>*]:px-1.5">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
               <TabsTrigger value="replays">Replays{data ? ` · ${data.replays.length}` : ""}</TabsTrigger>
@@ -153,7 +154,7 @@ function PersonSheet({ me, open, tab, onClose }: { me: Me; open: string | null; 
             </TabsList>
           </Tabs>
         </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto p-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-6">
           <ErrorNote error={error} />
           {p && tab === "profile" && (
             <>
@@ -234,12 +235,12 @@ export function PeopleScreen({ me }: { me: Me }) {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Users" meta={data ? `${num(data.people.length)}${data.people.length === 200 ? (sort ? " shown" : " most recent") : ""} · ${num(paying)} paying · ${num(fromAi)} from AI` : undefined}>
-        <div className="relative">
+        <div className="relative max-sm:w-full">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Email, name" aria-label="Search" className="w-56 pl-8" />
+          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Email, name" aria-label="Search" className="h-10 pl-8 sm:h-8 sm:w-56" />
         </div>
         <Select value={product || "*"} onValueChange={(v) => patchParams({ product: v === "*" ? null : String(v) })}>
-          <SelectTrigger aria-label="Product" className="min-w-40"><SelectValue>{(v: string) => (v === "*" ? "All products" : <span className="flex items-center gap-2"><ProductIcon id={v} name={name(v)} className="size-5 rounded-md" />{name(v)}</span>)}</SelectValue></SelectTrigger>
+          <SelectTrigger aria-label="Product" className="h-10 max-sm:w-full sm:h-8 sm:min-w-40"><SelectValue>{(v: string) => (v === "*" ? "All products" : <span className="flex items-center gap-2"><ProductIcon id={v} name={name(v)} className="size-5 rounded-md" />{name(v)}</span>)}</SelectValue></SelectTrigger>
           <SelectContent>
             <SelectItem value="*">All products</SelectItem>
             {me.products.map((p) => <SelectItem key={p.id} value={p.id}><span className="flex items-center gap-2"><ProductIcon id={p.id} name={p.name} className="size-5 rounded-md" />{p.name}</span></SelectItem>)}
@@ -251,7 +252,39 @@ export function PeopleScreen({ me }: { me: Me }) {
         {data && data.people.length === 0 ? (
           <p className="flex min-h-60 items-center justify-center px-6 text-center text-sm text-muted-foreground">{q || product ? "No one matches." : "Accounts created in the products show up here, with where they came from."}</p>
         ) : (
-          <Table className="table-fixed">
+          <>
+          <div className="flex items-center justify-between gap-3 border-b px-3 py-2 @xl:hidden">
+            <span className="text-sm text-muted-foreground">Sort by</span>
+            <Select value={sort || "newest"} onValueChange={(v) => patchParams({ sort: v === "newest" ? null : String(v) })}>
+              <SelectTrigger aria-label="Sort" className="h-10 min-w-36"><SelectValue>{(v: string) => SORTS[v] ?? v}</SelectValue></SelectTrigger>
+              <SelectContent>{Object.entries(SORTS).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <ul className="flex flex-col divide-y @xl:hidden">
+            {data ? data.people.map((p) => {
+              const key = `${p.product}/${p.user_id}`;
+              const label = p.name || p.email || p.user_id;
+              return (
+                <li key={key}>
+                  <button type="button" onClick={() => patchParams({ open: key, tab: null })} className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted/50">
+                    <Avatar seed={p.user_id} label={label} className="size-10 text-sm" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate font-medium">{label}</span>
+                      <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                        <ProductIcon id={p.product} name={name(p.product)} className="size-4 shrink-0 rounded" />
+                        <span className="truncate">{name(p.product)} · {p.ai_source ?? p.channel ?? "Unknown"}</span>
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-col items-end gap-0.5 text-xs text-muted-foreground tabular-nums">
+                      <span>{ago(p.last_seen_at ?? p.created_at)}</span>
+                      {p.ltv_cents > 0 && <span className="font-medium" style={{ color: TONE.money }}>{money(p.ltv_cents, p.currency ?? "EUR")}</span>}
+                    </span>
+                  </button>
+                </li>
+              );
+            }) : Array.from({ length: 6 }, (_, i) => <li key={i} className="px-4 py-3"><span className="block h-10 animate-pulse rounded bg-muted" /></li>)}
+          </ul>
+          <Table className="hidden table-fixed @xl:table">
             <TableHeader>
               <TableRow>
                 <SortableHead label="User" sortKey="user" sort={sort} className="pl-4" />
@@ -295,6 +328,7 @@ export function PeopleScreen({ me }: { me: Me }) {
                 ))}
             </TableBody>
           </Table>
+          </>
         )}
       </div>
       <PersonSheet me={me} open={open} tab={params.get("tab") ?? "profile"} onClose={() => patchParams({ open: null, tab: null })} />
