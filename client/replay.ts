@@ -11,10 +11,12 @@
   and only `[data-secret]` / `.csa-secret` blocks (an API key shown in clear) are blanked.
   `data-mask-inputs="sensitive"`: inputs in clear except passwords, emails, phone numbers, payment
   and one-time-code fields and anything whose name looks like a secret. `data-mask-text` masks page text under a selector (`*` = all).
-  Chunks: every 30 s or ~200 KB, gzip in the browser, POST /r. The server can answer
-  {stop: true} (opt-out, daily cap): recording stops for the page.
+  Chunks: every 30 s or ~200 KB, gzip in the browser, POST /r (replay-delivery.ts keeps them alive
+  through a page change). The server can answer {stop: true} (opt-out, daily cap): recording stops
+  for the page.
 */
 import { record } from "@rrweb/record";
+import { chunkDelivery, type Answer } from "./replay-delivery";
 
 (function () {
   const w = window as unknown as Record<string, any>;
@@ -45,34 +47,49 @@ import { record } from "@rrweb/record";
   let stopFn: (() => void) | undefined;
   let buffer: unknown[] = [];
   let size = 0, seq = 0, clicks = 0, errors = 0, stopped = false;
-  let session = sessionStorage.getItem("csa_rs") || "";
-  if (!/^rs_[A-Za-z0-9]{20}$/.test(session)) {
+  let renewed = false;
+  /** The server's cap per session (src/replay.ts). Past it, every chunk is refused for nothing. */
+  const MAX_SEQ = 720;
+  function newSession() {
     const a = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    session = "rs_" + Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => a[b % 62]).join("");
-    try { sessionStorage.setItem("csa_rs", session); } catch { /* private mode */ }
+    const id = "rs_" + Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => a[b % 62]).join("");
+    try { sessionStorage.setItem("csa_rs", id); } catch { /* private mode */ }
+    return id;
   }
+  let session = sessionStorage.getItem("csa_rs") || "";
+  if (!/^rs_[A-Za-z0-9]{20}$/.test(session)) session = newSession();
   try { seq = Number(sessionStorage.getItem(`csa_seq_${session}`)) || 0; } catch { /* */ }
 
   // Prefixes; a `*` stands for one path segment, e.g. /sites/*/settings/plan.
   const patterns = exclude.map((p) => new RegExp("^" + p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]+") + "(/|$)"));
   const excluded = () => patterns.some((re) => re.test(location.pathname));
 
-  async function flush(final = false) {
+  /** A session belongs to one person. Another account signing in on this tab inherited the id and
+      had every chunk refused with 403, on and on (152 in two days): start over, once. */
+  function onAnswer(answer: Answer, of: string) {
+    if (answer === "stop" || answer === "unauthorized") { stop(true); return; }
+    if (answer !== "refused" || of !== session) return;
+    if (renewed) { stop(true); return; }
+    renewed = true;
+    end();
+    buffer = []; size = 0; clicks = 0; errors = 0; seq = 0;
+    session = newSession();
+    begin();
+  }
+  const delivery = chunkDelivery({ endpoint, store: sessionStorage, send: (...args) => fetch(...args), token: () => token, onAnswer });
+
+  function flush(final = false) {
     if (!buffer.length || !token || stopped) return;
+    if (seq >= MAX_SEQ) { stop(true); return; }
     const events = buffer; buffer = []; size = 0;
     const q = new URLSearchParams({ s: session, q: String(seq++), c: String(clicks), er: String(errors), pg: location.pathname });
-    const prefix = new TextEncoder().encode(`${token}\n`);
     clicks = 0; errors = 0;
     try { sessionStorage.setItem(`csa_seq_${session}`, String(seq)); } catch { /* */ }
-    try {
-      const gz = new Uint8Array(await new Response(new Blob([JSON.stringify(events)]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
-      const payload = new Uint8Array(prefix.byteLength + gz.byteLength);
-      payload.set(prefix, 0);
-      payload.set(gz, prefix.byteLength);
-      const res = await fetch(`${endpoint}?${q}`, { method: "POST", body: payload, keepalive: final && payload.byteLength < 60_000, credentials: "omit", mode: "cors" });
-      if (res.status === 200) { const b = await res.json().catch(() => ({})); if (b.stop) stop(true); }
-      if (res.status === 401) stop(true);
-    } catch { /* lost chunk: the replay has a gap, the page is untouched */ }
+    const chunk = { session, query: q.toString(), events };
+    if (final) delivery.sendNow([chunk]); else void delivery.send(chunk);
+  }
+  function leaving() {
+    if (buffer.length) flush(true); else delivery.sendNow([]);
   }
 
   function begin() {
@@ -100,8 +117,9 @@ import { record } from "@rrweb/record";
   function stop(forGood: boolean) { end(); if (forGood) stopped = true; buffer = []; }
 
   setInterval(() => flush(), 30_000);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(true); });
-  addEventListener("pagehide", () => flush(true));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") leaving(); });
+  addEventListener("pagehide", leaving);
+  addEventListener("pageshow", (e) => { if (e.persisted) void delivery.drain(); });
   addEventListener("error", () => { errors++; });
   addEventListener("unhandledrejection", () => { errors++; });
 
@@ -113,9 +131,14 @@ import { record } from "@rrweb/record";
   }, 500);
 
   w.csaReplay = {
-    start(t: string) { token = t; begin(); },
-    stop() { flush(true); stop(false); token = null; },
+    start(t: string) { token = t; begin(); void delivery.drain(); },
+    // The next person on this tab gets their own session.
+    stop() { flush(true); stop(false); token = null; session = newSession(); seq = 0; renewed = false; },
   };
   const initial = script?.getAttribute("data-user-token");
-  if (initial) w.csaReplay.start(initial);
+  /* Not while the browser prerenders the page: nobody is looking at it yet, and it may never be opened. */
+  if (initial) {
+    if ((document as Document & { prerendering?: boolean }).prerendering) document.addEventListener("prerenderingchange", () => w.csaReplay.start(initial), { once: true });
+    else w.csaReplay.start(initial);
+  }
 })();

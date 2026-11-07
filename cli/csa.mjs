@@ -122,8 +122,9 @@ async function main() {
     if (has("dry-run")) { console.log(`1 replay: CREATE raw JSON + resumable chunk cache in ${out}; no download yet.`); return; }
     const { R2Reader } = await import("./r2-read.mjs");
     const { readReplay, writePrivate } = await import("./replay-read.mjs");
-    const { events } = await readReplay(new R2Reader(ROOT), meta, out);
+    const { events, gaps } = await readReplay(new R2Reader(ROOT), meta, out);
     writePrivate(path.join(out, `${id}.json`), JSON.stringify(events));
+    if (gaps.length) console.log(`Incomplete: ${gaps.length} chunk(s) missing (${gaps.map((gap) => gap.seq).join(", ")}), listed in ${out}/chunks/${id}/manifest.json.`);
     console.log(`${events.length} validated rrweb events → ${out}/${id}.json. Sensitive content: replays show what your users saw. Play it in the dashboard, or feed it to your own tooling.`);
     return;
   }
