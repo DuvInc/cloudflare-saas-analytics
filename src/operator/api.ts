@@ -42,10 +42,27 @@ const TOP_FIELDS: [string, keyof Top][] = [["pages", "views"], ["entries", "visi
 const NUMS = ["views", "visitors", "visits", "bounces", "engaged_ms", "returning_visitors", "signups", "events", "bot_views", "revenue_cents"] as const;
 const SUM_NUMS_SQL = NUMS.map((k) => `COALESCE(SUM(${k}), 0) AS ${k}`).join(", ");
 
-function appendTodayRow(rows: Record<string, any>[], todayRows: Awaited<ReturnType<typeof today>>, product: string, host: string, fullTops: boolean) {
+/* Live revenue of the open day per product, straight from payments: webhooks write there at once, `days` only catches up at the nightly rollup. */
+async function todayRevenue(env: Env, products?: string[]) {
+  const res = await env.DB.prepare("SELECT product, SUM(amount_cents) AS c FROM payments WHERE livemode = 1 AND created_at >= ? GROUP BY product").bind(`${utcDay(Date.now())}T00:00:00Z`).all<{ product: string; c: number }>();
+  return new Map((res.results ?? []).filter((r) => !products || products.includes(r.product)).map((r) => [r.product, r.c ?? 0]));
+}
+
+function appendTodayRow(rows: Record<string, any>[], todayRows: Awaited<ReturnType<typeof today>>, product: string, host: string, fullTops: boolean, revenue: Map<string, number>) {
   const todayRow = todayRows.find((r) => r.product === product && r.host === host);
-  if (!todayRow) return rows;
-  const t: Record<string, any> = { ...todayRow, returning_visitors: todayRow.returning, revenue_cents: 0, live: true };
+  if (!todayRow) {
+    /* Money today but no traffic yet: the revenue still reaches the chart. */
+    const cents = host === "*" ? revenue.get(product) ?? 0 : 0;
+    if (!cents) return rows;
+    const day = utcDay(Date.now());
+    const kept = rows.filter((r) => r.day !== day);
+    kept.push({ ...Object.fromEntries(NUMS.map((k) => [k, 0])), day, product, host, revenue_cents: cents, live: true, channels: "[]", hourly: "[]" });
+    return kept;
+  }
+  /* A revenue-only `days` row for today (from refreshRevenue) would shadow the live row on the chart and double the total. */
+  const day = utcDay(Date.now());
+  rows = rows.filter((r) => r.day !== day);
+  const t: Record<string, any> = { ...todayRow, returning_visitors: todayRow.returning, revenue_cents: host === "*" ? revenue.get(product) ?? 0 : 0, live: true, day };
   if (fullTops) {
     for (const [f] of TOP_FIELDS) t[f] = JSON.stringify((todayRow as any)[f]);
     t.vitals = JSON.stringify(todayRow.vitals);
@@ -58,11 +75,12 @@ function appendTodayRow(rows: Record<string, any>[], todayRows: Awaited<ReturnTy
 }
 
 async function productDays(env: Env, product: string, host: string, from: string, context: ReadContext) {
-  const [res, todayRows] = await Promise.all([
+  const [res, todayRows, revenue] = await Promise.all([
     env.DB.prepare("SELECT * FROM days WHERE product = ? AND host = ? AND day >= ? ORDER BY day").bind(product, host, from).all<Record<string, any>>(),
     today(env, context),
+    todayRevenue(env, [product]),
   ]);
-  return appendTodayRow(res.results ?? [], todayRows, product, host, true);
+  return appendTodayRow(res.results ?? [], todayRows, product, host, true, revenue);
 }
 
 /* Totals of the same length just before the period, summed inside SQLite. */
@@ -157,13 +175,14 @@ export async function operatorApi(request: Request, env: Env): Promise<Response>
         const ids = prods.map((p) => p.id);
         const inClause = ids.map(() => "?").join(", ");
         const prevStart = utcDay(Date.parse(`${from}T00:00:00Z`) - days * 86400_000);
-        const [batchRes, todayRows] = await Promise.all([
+        const [batchRes, todayRows, revenue] = await Promise.all([
           env.DB.batch([
             env.DB.prepare(`SELECT product, day, ${NUMS.join(", ")}, channels, hourly FROM days WHERE product IN (${inClause}) AND host = '*' AND day >= ? ORDER BY product, day`).bind(...ids, from),
             env.DB.prepare(`SELECT product, COUNT(*) AS n_days, ${SUM_NUMS_SQL} FROM days WHERE product IN (${inClause}) AND host = '*' AND day >= ? AND day < ? GROUP BY product`).bind(...ids, prevStart, from),
             env.DB.prepare(`SELECT site, COALESCE(SUM(ai_answers), 0) AS n FROM traffic_days WHERE site IN (${inClause}) AND day >= ? GROUP BY site`).bind(...ids, from),
           ]),
           today(env, context),
+          todayRevenue(env, ids),
         ]);
         const curByProd = new Map<string, Record<string, any>[]>(ids.map((id) => [id, []]));
         for (const r of (batchRes[0]?.results ?? []) as Record<string, any>[]) curByProd.get(r.product)?.push(r);
@@ -175,7 +194,7 @@ export async function operatorApi(request: Request, env: Env): Promise<Response>
         for (const r of (batchRes[2]?.results ?? []) as { site: string; n: number }[]) aiByProd.set(r.site, r.n ?? 0);
 
         const out = prods.map((p) => {
-          const rows = appendTodayRow(curByProd.get(p.id) ?? [], todayRows, p.id, "*", false);
+          const rows = appendTodayRow(curByProd.get(p.id) ?? [], todayRows, p.id, "*", false, revenue);
           const totals = Object.fromEntries(NUMS.map((k) => [k, rows.reduce((s, r) => s + (r[k] ?? 0), 0)]));
           const channels = mergeTops(rows.map((r) => JSON.parse(r.channels ?? "[]")), "visits", 8);
           return {
