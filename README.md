@@ -126,6 +126,8 @@ Then put the tracker on each site, and for each zone add the WAF rule below.
 
 **The site.** The `<script>` tag above. With a consent banner, the tracker listens for `window.csaConsent` or the `cookie-consent` event of [cloudflare-cookie-consent](https://github.com/DuvInc/cloudflare-cookie-consent), and sets its cookie only on a yes. Without one it stays at level 0.
 
+A page the browser prerenders (speculation rules, a link hovered) is counted once it is shown; one thrown away unseen sends nothing. Replay chunks survive a page that navigates away (a checkout redirect, a reload): the last chunk leaves with `keepalive` and is kept in `sessionStorage` until the server answers, so the next page in the tab resends it. `csa replay` reports any chunk still missing instead of refusing the session.
+
 **The app.** Bind the Worker to yours (`wrangler.jsonc` of your product):
 
 ```jsonc

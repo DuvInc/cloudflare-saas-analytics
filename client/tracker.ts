@@ -51,7 +51,7 @@ type Consent = { granted(c: string): boolean } | undefined;
   /* ------------------------------------------------ engagement, scroll, vitals of the current page */
   let shownAt = d.visibilityState === "visible" ? Date.now() : 0;
   let engaged = 0, maxScroll = 0, lcp: number | null = null, cls = 0, inp: number | null = null;
-  let pageUrl = location.href, referrer = d.referrer, left = false;
+  let pageUrl = location.href, referrer = d.referrer, left = false, viewed = false;
   const firstUrl = location.href;
 
   const scrollPct = () => {
@@ -66,12 +66,14 @@ type Consent = { granted(c: string): boolean } | undefined;
   } catch { /* old browser */ }
 
   function pageview() {
+    viewed = true;
     left = false;
     maxScroll = scrollPct();
     send([{ n: "$pageview", r: referrer, ...base(), u: pageUrl }]);
   }
   function pageleave(beacon: boolean) {
-    if (left) return;
+    /* A prerendered page thrown away unseen has no view to close. */
+    if (left || !viewed) return;
     left = true;
     if (shownAt) { engaged += Date.now() - shownAt; shownAt = d.visibilityState === "visible" ? Date.now() : 0; }
     send([{ n: "$pageleave", ...base(), u: pageUrl, em: engaged, sp: maxScroll, lcp, inp, cls: Math.round(cls * 1000) / 1000 }], beacon);
@@ -119,5 +121,9 @@ type Consent = { granted(c: string): boolean } | undefined;
   w.csa = api;
   for (const args of queued) api(args[0], args[1], args[2]);
 
-  pageview();
+  /* A page prerendered by the browser (speculation rules: a docs link hovered) runs its scripts
+     before anyone opens it, and may never be opened: it counts from the moment it is shown. */
+  if ((d as Document & { prerendering?: boolean }).prerendering) {
+    d.addEventListener("prerenderingchange", () => { shownAt = Date.now(); pageview(); }, { once: true });
+  } else pageview();
 })();
