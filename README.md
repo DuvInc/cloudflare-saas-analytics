@@ -28,7 +28,9 @@ npm run csa -- channels --product acme
 
 (The numbers above are invented. Everything else on this page is measured or marked as not measured yet.)
 
-![The overview: every product, then one card each](docs/overview.png)
+[![Watch the product demo: dashboard overview with sample data](docs/overview.png)](https://raw.githubusercontent.com/DuvInc/cloudflare-saas-analytics/main/docs/demo.mp4)
+
+[Watch the 51-second demo](https://raw.githubusercontent.com/DuvInc/cloudflare-saas-analytics/main/docs/demo.mp4)
 
 ## What you get
 
