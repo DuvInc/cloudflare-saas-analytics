@@ -110,7 +110,7 @@ export async function filteredDays(env: Env, product: string, host: string, from
     const manifest = day === today ? undefined : manifests.get(day);
     if (manifest && (JSON.parse(manifest.files) as string[]).length === 0) return null;
     const version = manifest ? encodeURIComponent(manifest.ran_at) : "open";
-    const key = `cache/explore/v2/${hash}/${day}/${version}.json`;
+    const key = `cache/explore/v3/${hash}/${day}/${version}.json`;
     return context.cached(key, async () => {
       if (manifest && !context.fresh) {
         const hit = await env.BUCKET.get(key);

@@ -5,6 +5,7 @@
   Built-ins start with `$`: $pageview, $pageleave, $consent (consent answered: carries the landing, not a view).
 */
 const NAME = /^(\$pageview|\$pageleave|\$consent|[a-z][a-z0-9_]{1,63})$/;
+export const SIGNUP_EVENT = "signup_completed";
 export const eventName = (v: unknown) => (typeof v === "string" && NAME.test(v) ? v : "");
 
 /* Never in analytics, whatever a product sends: content, credentials, contact details. */

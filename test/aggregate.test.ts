@@ -5,6 +5,18 @@ const T0 = Date.parse("2026-10-30T10:00:00Z");
 const ev = (o: Record<string, unknown>) => ({ product: "a", host: "a.com", received_at: T0, ts: T0, path: "/", channel: "Direct", country: "DE", device: "desktop", browser: "Chrome", os: "macOS", ...o });
 
 describe("sessionize + aggregate", () => {
+  it("counts one account per product and day even when sign-up was captured twice", () => {
+    const events = [
+      ev({ event: "signup_completed", user_id: "u1", host: "" }),
+      ev({ event: "signup_completed", user_id: "u1", host: "", received_at: T0 + 1 }),
+      ev({ event: "signup_completed", user_id: "u2", host: "" }),
+      ev({ event: "signup_completed", user_id: "u3", host: "", is_bot: true }),
+      ev({ event: "signup_completed", host: "" }),
+      ev({ event: "signup_completed", product: "b", user_id: "u1", host: "" }),
+    ];
+    const rows = aggregate("2026-10-30", events, sessionize(events), new Set());
+    expect(rows.map(({ product, signups }) => [product, signups])).toEqual([["a", 2], ["b", 1]]);
+  });
   it("one visitor, two visits split by a 30 min gap, signup folds the hash into the user", () => {
     const events = [
       ev({ event: "$pageview", day_hash: "h1", channel: "AI", ai_source: "ChatGPT", referrer_host: "chatgpt.com", path: "/pricing" }),

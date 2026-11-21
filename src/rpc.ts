@@ -9,7 +9,7 @@
 */
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "./env";
-import { cleanProps, eventName } from "./events";
+import { cleanProps, eventName, SIGNUP_EVENT } from "./events";
 import { ANON_COOKIE, dayHash, readCookie, signUser, utcDay, validAnon } from "./identity";
 import { productById, type Product } from "./products";
 import { killed } from "./collect";
@@ -92,7 +92,11 @@ const log = (event: string, e: unknown) => console.error(JSON.stringify({ event,
 
 export async function serverTrack(env: Env, p: Product, input: TrackInput): Promise<boolean> {
   const name = eventName(input.event);
-  if (!name || name.startsWith("$")) return false;
+  if (!name || name.startsWith("$") || name === SIGNUP_EVENT) return false;
+  return emitServerEvent(env, p, name, input);
+}
+
+async function emitServerEvent(env: Env, p: Product, name: string, input: Omit<TrackInput, "event">): Promise<boolean> {
   const now = Date.now();
   const anon = validAnon(readCookie(input.seen?.cookie ?? null, ANON_COOKIE));
   const hash = input.seen?.ip ? await dayHash(env, p.id, input.seen.ip, input.seen.ua ?? "", now) : null;
@@ -186,7 +190,7 @@ export async function countSignup(env: Env, p: Product, userId: string, workspac
     .bind(p.id, userId, new Date().toISOString()).first<{ first_touch: string | null; attribution_method: string | null }>();
   if (!claimed) return false;
   const touch = claimed.first_touch ? JSON.parse(claimed.first_touch) : null;
-  await serverTrack(env, p, { event: "signup_completed", userId, workspaceId, seen, ts,
+  await emitServerEvent(env, p, SIGNUP_EVENT, { userId, workspaceId, seen, ts,
     props: { attribution: claimed.attribution_method ?? "none", channel: touch?.channel ?? "", ai_source: touch?.ai_source ?? "" } });
   return true;
 }

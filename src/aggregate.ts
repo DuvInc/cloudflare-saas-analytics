@@ -7,6 +7,8 @@
   Visit: hits of one identity with no gap above 30 minutes. Its source is its first page view.
   Bounce: one page view and under 10 s engaged.
 */
+import { SIGNUP_EVENT } from "./events";
+
 export type Raw = Record<string, any>;
 export type Top = { k: string; views?: number; visits?: number; visitors?: number; count?: number; users?: number };
 
@@ -119,7 +121,8 @@ export function aggregate(day: string, events: Raw[], visits: Visit[], returning
     const entries = new Counter(), referrers = new Counter(), channels = new Counter(), ai = new Counter(), utmS = new Counter(), utmC = new Counter(), custom = new Counter();
     const idents = new Set<string>();
     const returningIdents = new Set<string>();
-    let views = 0, bot_views = 0, signups = 0, nEvents = 0;
+    const signupUsers = new Set<string>();
+    let views = 0, bot_views = 0, nEvents = 0;
     const hViews = new Array<number>(24).fill(0), hVisits = new Array<number>(24).fill(0);
     const lcp: number[] = [], inp: number[] = [], cls: number[] = [];
     for (const e of evs) {
@@ -146,7 +149,7 @@ export function aggregate(day: string, events: Raw[], visits: Visit[], returning
         if (typeof e.cls === "number") cls.push(e.cls);
       } else if (!String(e.event).startsWith("$")) {
         nEvents++;
-        if (e.event === "signup_completed") signups++;
+        if (e.event === SIGNUP_EVENT && e.user_id) signupUsers.add(e.user_id);
         custom.add(e.event, e.user_id ? `u:${e.user_id}` : ident);
       }
     }
@@ -168,7 +171,7 @@ export function aggregate(day: string, events: Raw[], visits: Visit[], returning
     rows.push({
       product, host, day,
       views, visitors: idents.size, visits: vs.filter((v) => v.views > 0).length, bounces, engaged_ms: engaged,
-      returning: returningIdents.size, signups, events: nEvents, bot_views,
+      returning: returningIdents.size, signups: signupUsers.size, events: nEvents, bot_views,
       pages: pages.top("views"), entries: entries.top("visits"), referrers: referrers.top("visits"), channels: channels.top("visits"),
       ai_sources: ai.top("visits"), utm_sources: utmS.top("visits"), utm_campaigns: utmC.top("visits"),
       countries: countries.top("visitors"), cities: cities.top("visitors").slice(0, 50), devices: devices.top("visitors"),
