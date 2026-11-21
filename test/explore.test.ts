@@ -57,7 +57,7 @@ describe("filteredDays reads compacted files and keeps matching visits", () => {
     expect(rows[0]!.visitors).toBe(1);
     expect(JSON.parse(rows[0]!.pages).map((x: { k: string }) => x.k).sort()).toEqual(["/", "/pricing"]);
     // the closed day is cached in R2: a second call reads it back
-    expect([...objects.keys()].some((k) => k.startsWith("cache/explore/v2/"))).toBe(true);
+    expect([...objects.keys()].some((k) => k.startsWith("cache/explore/v3/"))).toBe(true);
     expect((await filteredDays(env, "p", "*", day, 1, [{ dim: "channel", value: "AI" }]))[0]!.views).toBe(2);
     vi.unstubAllGlobals();
   });

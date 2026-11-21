@@ -181,6 +181,21 @@ describe("HTTP security primitives", () => {
 });
 
 describe("Collector privacy & D1 recent_visits deduplication", () => {
+  it("drops browser sign-ups without dropping other events in the batch", async () => {
+    const { env, sinkRows, ctx, flush } = fullTestEnv();
+    const product = PRODUCTS[0]!;
+    const page = "https://acme.com/pricing";
+    const req = new Request("https://t.acme.com/e", {
+      method: "POST",
+      headers: { origin: "https://acme.com" },
+      body: JSON.stringify({ e: [{ n: "signup_completed", u: page }, { n: "$pageview", u: page }] }),
+    });
+
+    expect((await handleCollect(req, env, ctx, product)).ok).toBe(true);
+    await flush();
+    expect(sinkRows.map(({ event }) => event)).toEqual(["$pageview"]);
+  });
+
   it("never records anon_id without explicit consent or under DNT, and deduplicates recent_visits", async () => {
     const { env, sqlite, executed, sinkRows, ctx, flush } = fullTestEnv();
     const product = PRODUCTS[0]!;
@@ -334,7 +349,7 @@ describe("Hourly compaction, empty-manifest zero-I/O, and streaming funnels", ()
     const events = await context.dayReadOnly("2026-11-01", "2026-11-01");
     expect(events.map((e) => e.path).sort()).toEqual(["/h0", "/h1", "/h3"]);
 
-    // Empty closed-day manifest must not read or write R2 `cache/explore/v2/...`
+    // Empty closed-day manifest must not read or write R2 `cache/explore/v3/...`
     sqlite.prepare("INSERT INTO runs (job, key, status, ran_at, files) VALUES ('rollup', '2026-10-31', 'ok', '2026-11-01T00:35:00Z', '[]')").run();
     const filtered = await filteredDays(env, "acme", "*", "2026-10-31", 1, [{ dim: "country", value: "FR" }], new ReadContext(env));
     expect(filtered).toEqual([]);

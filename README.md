@@ -136,6 +136,8 @@ A page the browser prerenders (speculation rules, a link hovered) is counted onc
 
 The product is fixed by the binding's `props`, so a product can only write as itself. `seen` is what your server saw of the browser (`{ ip: cf-connecting-ip, ua: user-agent, cookie }`); send nothing at all when the request carries Do Not Track or Global Privacy Control. Four calls, all safe to fire and forget (none throws): `identify` (the person; `signup: true` on creation attributes the signup), `track` (an event), `userToken` (a signed token for the browser, so replays and browser events carry the user), `forget` (account deleted: profile, identities and replays go).
 
+`signup_completed` is reserved for account identification. The browser collector and `track` reject it.
+
 For an account created by an OAuth return, where the sign-up webhook has no browser context, call `identify({ attributeSignup: true, seen })` from the callback that does: it fills a missing first touch for an account less than 15 minutes old, and never counts a sign-in as a sign-up.
 
 **Your definitions.** `config/events/<product>.json` is the event catalog (names the health check will not flag, and the activation event). `config/funnels/<product>.json` are the funnels. Import both in `config/index.ts`. Products themselves are in `wrangler.jsonc` `vars.PRODUCTS`.

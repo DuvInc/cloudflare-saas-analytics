@@ -14,7 +14,7 @@ import { rateLimitIpKey, readBoundedText } from "./http-security";
 import { anonCookie, ANON_COOKIE, dayHash, newAnon, readCookie, validAnon, verifyUser } from "./identity";
 import { ownsHost, type Product } from "./products";
 import { isCrawlerUA, isDatacenterASN, parseUA } from "./ua";
-import { cleanProps, eventName } from "./events";
+import { cleanProps, eventName, SIGNUP_EVENT } from "./events";
 
 export type Hit = {
   n?: unknown; u?: unknown; r?: unknown; ts?: unknown; lang?: unknown;
@@ -102,7 +102,7 @@ export async function handleCollect(req: Request, env: Env, ctx: ExecutionContex
     const name = eventName(h.n);
     const url = str(h.u, 1000);
     const host = hostOf(url);
-    if (!name || !host || !ownsHost(p, host)) continue;
+    if (!name || name === SIGNUP_EVENT || !host || !ownsHost(p, host)) continue;
     const t = classify(url, str(h.r, 1000), p.domain);
     const ts = int(h.ts, now - 24 * 3600_000, now + 60_000) ?? now;
     const rec: Enriched = {

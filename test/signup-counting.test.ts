@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("cloudflare:workers", () => ({ WorkerEntrypoint: class {} }));
 
-import { identify, reconcileSignups } from "../src/rpc";
+import { identify, reconcileSignups, serverTrack } from "../src/rpc";
 
 function setup() {
   const sqlite = new DatabaseSync(":memory:");
@@ -24,6 +24,14 @@ const product = { id: "initech", name: "Initech", domain: "initech.com", collect
 const signups = (sent: any[]) => sent.filter((e) => e.event === "signup_completed");
 
 describe("one sign-up per person", () => {
+  it("reserves signup_completed for identify while accepting other server events", async () => {
+    const { env, sent } = setup();
+    expect(await serverTrack(env, product, { event: "signup_completed", userId: "u" })).toBe(false);
+    await identify(env, product, { userId: "u", signup: true });
+    expect(await serverTrack(env, product, { event: "signup_completed", userId: "u" })).toBe(false);
+    expect(await serverTrack(env, product, { event: "project_created", userId: "u" })).toBe(true);
+    expect(sent.map(({ event }) => event)).toEqual(["signup_completed", "project_created"]);
+  });
   it("counts a Google sign-in that only reports a login, once even if the webhook follows", async () => {
     const { env, sent } = setup();
     const created = new Date(Date.now() - 20_000).toISOString();

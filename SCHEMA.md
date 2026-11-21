@@ -69,7 +69,7 @@ Local exports are outside the remote retention lifecycle; they require explicit 
 `views` (page views), `visitors` (distinct identities of the day: user > cookie > day hash),
 `visits`, `bounces` (one page view, under 10 s engaged, no product event), `engaged_ms` (sum over
 visits), `returning_visitors` (a cookie first seen before that day), `signups`
-(`signup_completed`, emitted once per person: `people.signed_up_at` is claimed by the first of `identify` with `signup`, `identify` with `attributeSignup` on an account under 15 min old, or the hourly reconciliation of accounts nobody counted), `events` (product events), `bot_views`, `revenue_cents` (payments that day,
+(distinct account IDs per UTC day from `signup_completed`; events without an account ID are excluded. Only account identification emits this event: `people.signed_up_at` is claimed by the first of `identify` with `signup`, `identify` with `attributeSignup` on an account under 15 min old, or the hourly reconciliation of accounts nobody counted), `events` (product events), `bot_views`, `revenue_cents` (payments that day,
 host `*` only), and tops as JSON `[{k, views, visits, visitors}]` (100 max): `pages`, `entries`,
 `referrers`, `channels`, `ai_sources`, `utm_sources`, `utm_campaigns`, `countries`, `cities`,
 `devices`, `browsers`, `os`, `langs`, `custom_events` (`{k, count, users}`), and `vitals`
