@@ -148,6 +148,7 @@ export function mockApi(): Plugin {
             bots: bots.map(([bot, family, n], i) => ({ bot, family, category: "", requests: n, errors: i % 4 === 0 ? Math.round(n * 0.03) : 0, days: Math.min(days, 30 - i), pages: [{ k: "/docs/api-reference", n: 40 }, { k: "/", n: 30 }, { k: "/llms.txt", n: 12 }] })),
             pages: { answers: tops.pages.map((x) => ({ k: x.k, n: Math.round(x.views / 20) })), crawl: tops.pages.map((x) => ({ k: x.k, n: x.views * 2 })) },
             kinds: [{ k: "page", n: 9800 }, { k: "asset", n: 2100 }, { k: "feed", n: 640 }, { k: "twin", n: 220 }, { k: "llms", n: 48 }],
+            notFound: { pages: [{ host: "acme.com", path: "/docs/api-reference.md", requests: 18 }], unindexedDays: [], truncated: false },
             statuses: [{ k: "200", n: 11200 }, { k: "301", n: 820 }, { k: "404", n: 310 }, { k: "503", n: 12 }], countries: [{ k: "US", n: 9000 }, { k: "IE", n: 1200 }], traffic: { bot: 41000, other: 59000 }, delivery: [] });
         }
         if (p === "/api/health") return send({ issues: [], runs: Array.from({ length: 8 }, (_, i) => ({ job: i % 4 === 3 ? "stripe_reconcile" : "rollup", key: utc(Date.now() - (i + 1) * DAY), status: "ok", note: `${1200 - i * 80} events`, ran_at: new Date(Date.now() - (i + 1) * DAY + 3600_000).toISOString() })) });

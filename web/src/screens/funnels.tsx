@@ -23,7 +23,7 @@ type Funnel = { id: string; product: string; name: string; description: string; 
 
 const share = (a: number, b: number) => (b ? (a / b) * 100 : 0);
 const pct = (a: number, b: number) => `${Math.round(share(a, b) * 10) / 10}%`;
-const label = (s: { kind: string; value: string }) => (s.kind === "page" ? (s.value === "*" ? "Any page" : s.value) : s.value.replace(/_/g, " "));
+const label = (s: { kind: string; value: string; label?: string }) => s.label ?? (s.kind === "page" ? (s.value === "*" ? "Any page" : s.value) : s.value.replace(/_/g, " "));
 
 function FunnelCard({ f, productName }: { f: Funnel; productName: string }) {
   if (f.unavailable) return (

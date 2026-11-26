@@ -15,7 +15,7 @@ import type { Env } from "./env";
 import { handleCollect, corsHeaders } from "./collect";
 import { handleReplay } from "./replay";
 import { handleStripeWebhook, reconcileStripe } from "./stripe";
-import { runBots } from "./bots";
+import { botsConfig, runBots } from "./bots";
 import { runRollups } from "./rollup";
 import { sendAlerts, sendReportNow, sendReports } from "./report";
 import { productByCollectHost, productById, products } from "./products";
@@ -85,6 +85,12 @@ export default {
       try { const r = await fn(); console.log(JSON.stringify({ event: "cron_step", name, result: r })); }
       catch (e) { console.error(JSON.stringify({ event: "cron_step_failed", name, reason: String((e as Error)?.message ?? e).slice(0, 300) })); }
     };
+    if (controller.cron === "30,35,40,45,50,55 * * * *") {
+      if (Object.keys(botsConfig(env).recoverFrom ?? {}).length) {
+        await step("bots_recovery", () => runBots(env, controller.scheduledTime));
+      }
+      return;
+    }
     await step("signups", () => reconcileSignups(env, products(env.PRODUCTS)));
     await step("rollup", () => runRollups(env, controller.scheduledTime));
     await step("bots", () => runBots(env, controller.scheduledTime));

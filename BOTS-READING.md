@@ -5,7 +5,7 @@
 This exists because of a real mistake, made in this project, in front of the
 person who pays for the work: a correlation was computed, presented as an
 answer, tightened by one join condition, and it changed by **30x on the same
-bot** — and that swing almost got reported as a new finding instead of as proof
+bot**, and that swing almost got reported as a new finding instead of as proof
 the method was worthless. Read this before you repeat it.
 
 ## 1. What this archive can answer, and what it structurally cannot
@@ -14,22 +14,22 @@ It can answer: which verified bot, how often, which path, which kind
 (page/twin/llms/og/feed/asset), which section, which locale, which country,
 which HTTP status, per window (one hour; the imported history before 2026-10-31 has 1 h, 4 h or 24 h windows).
 Schema: `src/bots.ts` and SCHEMA.md. Query it with
-`node cli/csa.mjs sql "…"` after `csa sync --bots` (DuckDB, local, free) — the views are `ai_crawl`
+`node cli/csa.mjs sql "…"` after `csa sync --bots` (DuckDB, local, free); the views are `ai_crawl`
 and `traffic_totals`.
 
 It **cannot** answer, ever, no matter how the query is written:
 
-- **How a bot found a URL.** There is no `referer` column — Cloudflare locks
+- **How a bot found a URL.** There is no `referer` column: Cloudflare locks
   that dimension behind a paid tier the account doesn't have, and this is
   written down in `src/bots.ts`. No amount of SQL
   cleverness recovers a field that was never collected.
 - **The order requests happened in.** Rows are counts aggregated per window (1 h, older history 4 h), not
   a request log. "Did it fetch the HTML then the twin" is not a question this
-  schema can hold an answer to — there is no timestamp finer than the window,
+  schema can hold an answer to: there is no timestamp finer than the window,
   and no session or request ID to sequence within it.
 
-If a question in this shape comes up — "did they find it via the link on the
-page", "did this crawl follow that redirect", "was this a click or a scan" —
+If a question in this shape comes up ("did they find it via the link on the
+page", "did this crawl follow that redirect", "was this a click or a scan"),
 say plainly that the archive cannot answer it, and say why (no referer, no
 per-request order), before offering anything else. Do not let a workaround
 (co-occurrence in the same day, same hour, whatever) get presented as if it
@@ -40,16 +40,16 @@ explicitly, every time, in the same sentence as the number.
 
 Concretely, what happened: "same day" co-occurrence between a bot's twin (.md)
 fetches and its HTML fetches of the same path gave ClaudeBot 60%. Tightening
-the join to "same hour" — a stricter, more honest version of the same
-question — gave 2%. Same bot, same underlying data, one condition changed,
+the join to "same hour" (a stricter, more honest version of the same
+question) gave 2%. Same bot, same underlying data, one condition changed,
 answer changed by 30x.
 
 **That instability is the finding.** Not "ClaudeBot discovers pages
-differently at different times of day" — the sample is too thin and the
+differently at different times of day": the sample is too thin and the
 mechanism too indirect for that story to be anything but invented. The correct
 reaction, the moment two granularities of the same correlation disagree by an
 order of magnitude, is to stop and say the method does not produce a stable
-answer — not to pick one of the two numbers, and not to keep computing a third
+answer, not to pick one of the two numbers, and not to keep computing a third
 variant looking for one that "makes sense."
 
 **Rule:** before reporting a correlation-based read (co-occurrence, "X often
@@ -61,10 +61,10 @@ this sample size", not the number from whichever run happened to be shown.
 ## 3. Always `SUM(requests)`, never `COUNT(*)`
 
 Each row in `ai_crawl` / `traffic_totals` is a GROUP with its own
-`requests` count already folded in (see `fold()` in `index.ts` — two
+`requests` count already folded in (see `fold()` in `src/bots.ts`, two
 different User-Agent strings that both resolve to the same `bot_name` collapse
-into one row with summed requests). `COUNT(*)` counts *rows* — distinct
-(hour, path, status, …) combinations — which is a real number but not the one
+into one row with summed requests). `COUNT(*)` counts *rows* (distinct
+(hour, path, status, …) combinations), which is a real number but not the one
 almost every question is actually asking. It was used by mistake in this
 project's first pass at a co-occurrence query and produced a total that did
 not match the volume already reported minutes earlier in the same
@@ -82,7 +82,7 @@ SELECT bot_name, SUM(requests) FROM ai_crawl WHERE kind = 'twin' GROUP BY bot_na
 
 ## 4. Reads that are safe, and why
 
-These describe traffic that happened — they carry no claim about mechanism or
+These describe traffic that happened: they carry no claim about mechanism or
 causality, so they don't have trap #1's problem:
 
 - Locale split by `kind` (`SUM(requests) GROUP BY locale, kind`). Exclude

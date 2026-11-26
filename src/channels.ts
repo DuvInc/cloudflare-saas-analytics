@@ -53,7 +53,7 @@ export const AI_UTM: [RegExp, string][] = [
 ];
 
 const SEARCH = /(^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|search\.yahoo\.com|yahoo\.co\.jp|yandex\.[a-z]+|baidu\.com|ecosia\.org|qwant\.com|search\.brave\.com|startpage\.com|kagi\.com|naver\.com|seznam\.cz|sogou\.com|so\.com|lilo\.org|metager\.de)$/;
-const SOCIAL = /(^|\.)(facebook\.com|fb\.com|m\.facebook\.com|l\.facebook\.com|lm\.facebook\.com|instagram\.com|l\.instagram\.com|t\.co|x\.com|twitter\.com|linkedin\.com|lnkd\.in|reddit\.com|old\.reddit\.com|news\.ycombinator\.com|threads\.net|bsky\.app|mastodon\.social|pinterest\.[a-z.]+|tiktok\.com|snapchat\.com|tumblr\.com|quora\.com|discord\.com|telegram\.org|t\.me|whatsapp\.com|wa\.me|producthunt\.com|indiehackers\.com|substack\.com|medium\.com|dev\.to)$/;
+const SOCIAL = /(^|\.)(facebook\.com|fb\.com|m\.facebook\.com|l\.facebook\.com|lm\.facebook\.com|instagram\.com|l\.instagram\.com|t\.co|x\.com|twitter\.com|linkedin\.com|lnkd\.in|reddit\.com|old\.reddit\.com|news\.ycombinator\.com|threads\.net|threads\.com|bsky\.app|mastodon\.social|pinterest\.[a-z.]+|tiktok\.com|snapchat\.com|tumblr\.com|quora\.com|discord\.com|telegram\.org|t\.me|whatsapp\.com|wa\.me|producthunt\.com|indiehackers\.com|substack\.com|medium\.com|dev\.to)$/;
 const VIDEO = /(^|\.)(youtube\.com|youtu\.be|m\.youtube\.com|vimeo\.com|twitch\.tv|dailymotion\.com)$/;
 const EMAIL = /(^|\.)(mail\.google\.com|outlook\.live\.com|outlook\.office\.com|mail\.yahoo\.com|webmail\.|mail\.proton\.me|app\.fastmail\.com|gmx\.[a-z]+|web\.de)$/;
 

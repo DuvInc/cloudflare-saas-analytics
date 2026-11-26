@@ -23,4 +23,20 @@ describe("funnel measurement contracts", () => {
     }
     expect(computeFunnel([{ event: "$pageview", path: "/jobs", day_hash: "x", received_at: 1 }], steps, new Map()).steps[0]!.people).toBe(0);
   });
+  it("narrows an event step by its properties", () => {
+    const steps = [
+      { kind: "event" as const, value: "export_completed", where: { is_sample: false } },
+      { kind: "event" as const, value: "export_completed", where: { is_sample: false } },
+    ];
+    const events = [
+      { event: "export_completed", user_id: "u", received_at: 1, props: JSON.stringify({ is_sample: true }) },
+      { event: "export_completed", user_id: "u", received_at: 2, props: JSON.stringify({ is_sample: false }) },
+      { event: "export_completed", user_id: "u", received_at: 3, props: { is_sample: false } },
+      { event: "export_completed", user_id: "v", received_at: 4, props: JSON.stringify({ is_sample: false }) },
+    ];
+    expect(computeFunnel(events, steps, new Map()).steps.map((step) => step.people)).toEqual([2, 1]);
+  });
+  it("gives every funnel step of a where filter a readable label", () => {
+    for (const funnel of funnels) for (const step of funnel.steps) if (step.where) expect(step.label, `${funnel.id}:${step.value}`).toBeTruthy();
+  });
 });

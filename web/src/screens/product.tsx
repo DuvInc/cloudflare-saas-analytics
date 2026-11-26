@@ -4,8 +4,9 @@
   when they come, and where the money comes from. Every breakdown row filters the screen; filters
   can also be built or described (FilterBar).
 */
+import { useState } from "react";
 import { GitFork, PlayCircle } from "lucide-react";
-import { Bar, BarChart, XAxis } from "recharts";
+import { Bar, BarChart, Cell, Pie, PieChart, XAxis } from "recharts";
 import type { Me, Point, Top, Totals } from "@/lib/api";
 import { money, num } from "@/lib/fmt";
 import { href, patchParams, useRoute } from "@/lib/route";
@@ -76,6 +77,78 @@ function TimeOfDay({ hours }: { hours: Hourly }) {
         ) : <p className="flex h-full items-center justify-center text-sm text-muted-foreground">Hours are recorded from Oct 31, 2026</p>}
       </div>
     </section>
+  );
+}
+
+/* A channel keeps its colour whatever the period or filter; unknown and rare channels stay grey. */
+const CHANNEL_SLOT: Record<string, number> = { "Organic Search": 1, Direct: 2, Referral: 3, Campaign: 4, "Organic Social": 5, Email: 6, AI: 7, "Organic Video": 8 };
+const channelColor = (k: string) => (CHANNEL_SLOT[k] ? `var(--series-${CHANNEL_SLOT[k]})` : "var(--series-none)");
+type Origin = { k: string; n: number; paid: number; ltv: number };
+
+function Donut({ rows, value, total, label, format }: { rows: Origin[]; value: (r: Origin) => number; total: string; label: string; format: (v: number) => string }) {
+  const slices = rows.map((r) => ({ k: r.k, v: value(r) })).filter((x) => x.v > 0);
+  const sum = slices.reduce((a, x) => a + x.v, 0);
+  const [hover, setHover] = useState<number | null>(null);
+  const on = hover !== null ? slices[hover] : undefined;
+  return (
+    <figure className="flex min-w-0 flex-col items-center gap-1">
+      <div className="relative size-36 sm:size-40" onMouseLeave={() => setHover(null)}>
+        {sum > 0 ? (
+          <ChartContainer config={{}} className="aspect-square size-full">
+            <PieChart>
+              <Pie data={slices} dataKey="v" nameKey="k" innerRadius="64%" outerRadius="100%" stroke="var(--background)" strokeWidth={2} startAngle={90} endAngle={-270} isAnimationActive={false}
+                onMouseEnter={(_, i) => setHover(i)} onMouseLeave={() => setHover(null)}>
+                {slices.map((x, i) => <Cell key={x.k} fill={channelColor(x.k)} fillOpacity={hover === null || hover === i ? 1 : 0.35} />)}
+              </Pie>
+            </PieChart>
+          </ChartContainer>
+        ) : <div className="size-full rounded-full border-[14px] border-muted" />}
+        <div className="pointer-events-none absolute inset-[24%] flex flex-col items-center justify-center text-center leading-tight" aria-live="polite">
+          {on ? (
+            <>
+              <span className="max-w-full truncate text-[11px] text-muted-foreground">{on.k}</span>
+              <span className="text-sm font-semibold tabular-nums">{format(on.v)}</span>
+              <span className="text-[11px] text-muted-foreground tabular-nums">{Math.round((on.v / sum) * 100)}%</span>
+            </>
+          ) : <span className="text-base font-semibold tabular-nums">{total}</span>}
+        </div>
+      </div>
+      <figcaption className="text-xs text-muted-foreground">{label}</figcaption>
+    </figure>
+  );
+}
+
+function OriginShares({ rows: raw }: { rows: Origin[] }) {
+  const rows = raw.map((r) => ({ ...r, k: r.k === "Inconnu" ? "Unknown" : r.k }));
+  const signups = rows.reduce((a, r) => a + r.n, 0);
+  const revenue = rows.reduce((a, r) => a + r.ltv, 0);
+  return (
+    <div className="flex flex-col">
+      <div className="grid grid-cols-2 gap-4 px-4 pt-4 pb-3">
+        <Donut rows={rows} value={(r) => r.n} total={num(signups)} label="Sign-ups" format={num} />
+        <Donut rows={rows} value={(r) => r.ltv} total={money(revenue)} label="Revenue" format={money} />
+      </div>
+      <Table className="table-fixed">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="pl-4">Channel</TableHead>
+            <TableHead className="w-20 text-right">Sign-ups</TableHead>
+            <TableHead className="hidden w-20 text-right @md:table-cell">Paying</TableHead>
+            <TableHead className="w-24 pr-4 text-right">Revenue</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((x) => (
+            <TableRow key={x.k}>
+              <TableCell className="truncate pl-4"><span className="mr-2 inline-block size-2.5 rounded-sm align-[-1px]" style={{ background: channelColor(x.k) }} />{x.k}</TableCell>
+              <TableCell className="text-right tabular-nums">{num(x.n)}</TableCell>
+              <TableCell className="hidden text-right tabular-nums @md:table-cell">{num(x.paid)}</TableCell>
+              <TableCell className="pr-4 text-right tabular-nums">{money(x.ltv)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -193,28 +266,7 @@ export function ProductScreen({ me, id }: { me: Me; id: string }) {
               <span className="text-xs text-muted-foreground"><Hint content={data.attribution.map((a) => `${METHOD[a.k] ?? a.k}: ${a.n}`).join(" · ")}>Method</Hint></span>
             )}
           </header>
-          {data?.signupsByChannel?.length ? (
-            <Table className="table-fixed">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">Channel</TableHead>
-                  <TableHead className="w-20 text-right">Sign-ups</TableHead>
-                  <TableHead className="hidden w-20 text-right @md:table-cell">Paying</TableHead>
-                  <TableHead className="w-24 pr-4 text-right">Revenue</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.signupsByChannel.map((x) => (
-                  <TableRow key={x.k}>
-                    <TableCell className="truncate pl-4">{x.k === "Inconnu" ? "Unknown" : x.k}</TableCell>
-                    <TableCell className="text-right tabular-nums">{num(x.n)}</TableCell>
-                    <TableCell className="hidden text-right tabular-nums @md:table-cell">{num(x.paid)}</TableCell>
-                    <TableCell className="pr-4 text-right tabular-nums">{money(x.ltv)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
+          {data?.signupsByChannel?.length ? <OriginShares rows={data.signupsByChannel} /> : (
             <p className="flex min-h-40 flex-1 items-center justify-center text-sm text-muted-foreground">{data ? (data.signupsByChannel === null ? "This filter does not apply to sign-ups" : "No sign-up in this period") : ""}</p>
           )}
         </section>
