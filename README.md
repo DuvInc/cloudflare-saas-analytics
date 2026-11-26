@@ -38,7 +38,7 @@ https://github.com/user-attachments/assets/7db6fe6c-56e3-4575-be77-837a856cb850
 | **Product events and funnels** | `track` from your server or the browser. Funnels are defined in code (`config/funnels/*.json`), measure people in order, and join anonymous landings to the account they became. |
 | **Attribution** | A signup is tied to the first visit that brought the person: by a consent cookie, or by a daily hash of IP and browser that is deleted after 48 hours. Never overwrites an existing origin, never attributes a visit after the signup. |
 | **Revenue** | Stripe, read only (webhooks plus a nightly reconciliation). Revenue per channel, per AI assistant, per person. A one-off Checkout and the invoice Stripe generates for it count once. |
-| **Session replay** | Signed-in users only, masked by default, stored 30 days. A player in the dashboard. |
+| **Session replay** | Signed-in users, and optionally website visitors who accepted analytics. Masked by default, stored 30 days. A player in the dashboard, JS errors marked on its timeline. |
 | **AI and bots** | Which verified AI crawlers read which pages, hourly, from Cloudflare's own zone analytics. Optional. |
 | **Reports and alerts** | Daily, weekly and monthly reports to a Slack or Discord webhook; alerts when a product goes silent or a job fails. |
 | **A dashboard on your phone** | Passkey sign-in only (no password, no third party), installable as a PWA. |
@@ -53,7 +53,7 @@ All screenshots show invented data, rendered from the real dashboard (`npm run s
 | ![One product: sources, pages, countries, devices](docs/product.png) | ![Funnels: people who did each step in order, by channel](docs/funnels.png) |
 | **A product.** Every row is a filter: click "Organic Search" and the whole screen shows only those visits. | **Funnels.** Defined in code, measured on people in order, with the conversion by channel and AI assistant. |
 | ![AI crawlers and bots, by family](docs/ai-bots.png) | ![Session replay of a signed-in user](docs/replays.png) |
-| **AI and bots.** Which AI crawlers read which pages, and which AI answers fetched them live. | **Replays.** Sessions of signed-in users, worst first (errors, then length), played in the dashboard. |
+| **AI and bots.** Which AI crawlers read which pages, and which AI answers fetched them live. | **Replays.** Sessions of signed-in users (and visitors, if you allow them), worst first (errors, then length), played in the dashboard. |
 
 ## Why it is built this way
 
@@ -65,7 +65,7 @@ All screenshots show invented data, rendered from the real dashboard (`npm run s
 
 ```text
 browser   t.<domain>/t.js ──POST /e──┐
-          replay.js (signed-in) ─POST /r─┤
+          replay.js (signed-in, consented visitors) ─POST /r─┤
 your Worker ── env.ANALYTICS (RPC) ──────┤        this Worker
 Stripe ── webhook /stripe/<product> ─────┤  ───►  ├─ Pipelines stream ─► R2 raw/*.json.gz (every 5 min)
                                                   ├─ R2 replays/<product>/<day>/<session>/*.json.gz (30 days)
@@ -126,7 +126,9 @@ Then put the tracker on each site, and for each zone add the WAF rule below.
 
 **The site.** The `<script>` tag above. With a consent banner, the tracker listens for `window.csaConsent` or the `cookie-consent` event of [cloudflare-cookie-consent](https://github.com/DuvInc/cloudflare-cookie-consent), and sets its cookie only on a yes. Without one it stays at level 0.
 
-A page the browser prerenders (speculation rules, a link hovered) is counted once it is shown; one thrown away unseen sends nothing. Replay chunks survive a page that navigates away (a checkout redirect, a reload): the last chunk leaves with `keepalive` and is kept in `sessionStorage` until the server answers, so the next page in the tab resends it. `csa replay` reports any chunk still missing instead of refusing the session.
+A page the browser prerenders (speculation rules, a link hovered) is counted once it is shown; one thrown away unseen sends nothing. Replay chunks survive a page that navigates away (a checkout redirect, a reload): the last chunk leaves with `keepalive` and is kept in `sessionStorage` until the server answers, so the next page in the tab resends it, up to 5 tries; a chunk lost for good triggers a fresh full snapshot, so the rest of the session still plays. `csa replay` reports any chunk still missing instead of refusing the session.
+
+Website visitors can be recorded too, on a product with `"replayVisitors": true`: the page loads `replay.js` and calls `csaReplay.startVisitor()` once the visitor does something worth watching (a file dropped in a free tool, a pricing toggle), and the tab keeps recording on its next pages. The collector writes a chunk only when the request carries the `csa_id` cookie, which exists only after the visitor accepted analytics; call `csaReplay.revoke()` when consent is withdrawn. The session is shown as "Visitor" until that person signs up, then under their account, and `forget` deletes it with them. Visitors have their own cap, `replayVisitorDailyCap`, so a busy site never uses up the app's `replayDailyCap`. Load the script after the page is interactive (on `load`, then idle) so it never weighs on LCP or INP.
 
 **The app.** Bind the Worker to yours (`wrangler.jsonc` of your product):
 

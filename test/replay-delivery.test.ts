@@ -16,7 +16,7 @@ function harness(respond: (call: Call) => Promise<Response> = async () => new Re
   const delivery = chunkDelivery({ endpoint: "https://t.x/r", store, send, token: () => "u1.tok", onAnswer: (a, s) => answers.push([a, s]) });
   return { calls, answers, delivery, store };
 }
-const chunk = (q = "s=rs_a&q=0", events: unknown[] = [{ type: 3, timestamp: 1 }]) => ({ session: "rs_a", query: q, events });
+const chunk = (q = "s=rs_a&q=0", events: unknown[] = [{ type: 3, timestamp: 1 }]) => ({ session: "rs_a", query: q, json: JSON.stringify(events) });
 const tick = () => new Promise((r) => setTimeout(r, 5));
 const dead = () => new Promise<Response>(() => {});
 
@@ -45,6 +45,28 @@ describe("replay chunk delivery", () => {
     delivery.sendNow([chunk()]);
     await tick();
     expect(store.m.size).toBe(0);
+  });
+
+  it("keeps only retryable responses on exit and resends them with the same sequence", async () => {
+    const store = memory();
+    const failed = harness(async ({ url }) => new Response(null, { status: url.endsWith("q=0") ? 429 : 413 }), store);
+    failed.delivery.sendNow([chunk(), chunk("s=rs_a&q=1")]);
+    await tick();
+    const back = harness(undefined, store);
+    await back.delivery.drain();
+    expect(back.calls.map(({ url }) => url)).toEqual(["https://t.x/r?s=rs_a&q=0"]);
+    expect(store.m.size).toBe(0);
+  });
+
+  it("discards old-session work on an account change, even during compression", async () => {
+    const { delivery, store, calls } = harness(dead);
+    delivery.sendNow([chunk(), { ...chunk("s=rs_b&q=1"), session: "rs_b" }]);
+    const inflight = delivery.send(chunk("s=rs_a&q=2"));
+    delivery.discard("rs_a");
+    await inflight;
+    const kept = JSON.parse(store.m.get("csa_rs_pending")!) as { s: string }[];
+    expect(kept.map(({ s }) => s)).toEqual(["rs_b"]);
+    expect(calls).toHaveLength(2);
   });
 
   it("rescues a chunk still being compressed when the page starts leaving", async () => {
@@ -96,6 +118,31 @@ describe("replay chunk delivery", () => {
     const broken = memory();
     broken.setItem("csa_rs_pending", "{not json");
     await harness(undefined, broken).delivery.drain();
+  });
+
+  it("keeps a chunk on transient send() failure (network or 5xx/429) and drains it later", async () => {
+    const store = memory();
+    const netFail = harness(async () => { throw new Error("offline"); }, store);
+    await netFail.delivery.send(chunk("s=rs_a&q=2"));
+    expect(JSON.parse(store.m.get("csa_rs_pending")!)).toHaveLength(1);
+
+    const serverFail = harness(async () => new Response(null, { status: 503 }), store);
+    await serverFail.delivery.send(chunk("s=rs_a&q=3"));
+    expect(JSON.parse(store.m.get("csa_rs_pending")!)).toHaveLength(2);
+
+    const recovered = harness(undefined, store);
+    await recovered.delivery.drain();
+    expect(recovered.calls.map((c) => c.url)).toEqual(["https://t.x/r?s=rs_a&q=2", "https://t.x/r?s=rs_a&q=3"]);
+    expect(store.m.size).toBe(0);
+  });
+
+  it("drops a permanently failing chunk after 5 attempts and reports failed", async () => {
+    const store = memory();
+    const fail = harness(async () => new Response(null, { status: 503 }), store);
+    await fail.delivery.send(chunk("s=rs_a&q=7")); // attempt 1
+    for (let i = 0; i < 5; i++) await fail.delivery.drain();
+    expect(store.m.size).toBe(0);
+    expect(fail.answers.some(([a]) => a === "failed")).toBe(true);
   });
 
   it("does not grow past its storage limit", () => {

@@ -209,17 +209,22 @@ export async function reconcileSignups(env: Env, products: Product[]): Promise<n
 }
 
 export async function forget(env: Env, product: string, userId: string) {
+  /* Replays recorded while they were still an anonymous visitor belong to them too. */
+  const anons = (await env.DB.prepare("SELECT value FROM identities WHERE product = ? AND user_id = ? AND kind = 'anon'").bind(product, userId).all<{ value: string }>()).results ?? [];
+  const subjects = [userId, ...anons.map((a) => a.value)];
   await env.DB.batch([
     env.DB.prepare("DELETE FROM people WHERE product = ? AND user_id = ?").bind(product, userId),
     env.DB.prepare("DELETE FROM identities WHERE product = ? AND user_id = ?").bind(product, userId),
     env.DB.prepare("UPDATE payments SET email = NULL WHERE product = ? AND user_id = ?").bind(product, userId),
   ]);
-  const sessions = await env.DB.prepare("SELECT id, day FROM replay_sessions WHERE product = ? AND user_id = ?").bind(product, userId).all<{ id: string; day: string }>();
-  for (const s of sessions.results ?? []) {
-    const listed = await env.BUCKET.list({ prefix: `replays/${product}/${s.day}/${s.id}/` });
-    if (listed.objects.length) await env.BUCKET.delete(listed.objects.map((o) => o.key));
-    await env.DB.prepare("DELETE FROM replay_chunks WHERE session_id = ?").bind(s.id).run();
+  for (const subject of subjects) {
+    const sessions = await env.DB.prepare("SELECT id, day FROM replay_sessions WHERE product = ? AND user_id = ?").bind(product, subject).all<{ id: string; day: string }>();
+    for (const s of sessions.results ?? []) {
+      const listed = await env.BUCKET.list({ prefix: `replays/${product}/${s.day}/${s.id}/` });
+      if (listed.objects.length) await env.BUCKET.delete(listed.objects.map((o) => o.key));
+      await env.DB.prepare("DELETE FROM replay_chunks WHERE session_id = ?").bind(s.id).run();
+    }
+    await env.DB.prepare("DELETE FROM replay_sessions WHERE product = ? AND user_id = ?").bind(product, subject).run();
   }
-  await env.DB.prepare("DELETE FROM replay_sessions WHERE product = ? AND user_id = ?").bind(product, userId).run();
   console.log(JSON.stringify({ event: "person_forgotten", product, day: utcDay(Date.now()) }));
 }

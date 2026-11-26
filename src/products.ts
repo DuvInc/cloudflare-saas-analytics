@@ -5,6 +5,9 @@
     the consent cookie `csa_id` is set on it, so it follows the visitor from the site to the app.
   - `collect`: the host this Worker answers on for that product (custom domain, `t.<domain>`).
   - `replay`: session replay for signed-in users; `replayDailyCap` bounds a runaway.
+  - `replayVisitors`: also record anonymous visitors who accepted analytics (their `csa_id` cookie is
+    the proof), when the page starts it (`csaReplay.startVisitor()`); `replayVisitorDailyCap` bounds
+    them on their own, so visitors never use up the signed-in users' cap.
   - `currency`: the currency revenue is summed in (payments in another currency are kept, not summed).
 */
 export type Product = {
@@ -14,6 +17,8 @@ export type Product = {
   collect: string;
   replay: boolean;
   replayDailyCap: number;
+  replayVisitors?: boolean;
+  replayVisitorDailyCap?: number;
   currency: string;
   /** Extra hosts allowed outside `domain` (e.g. a docs site on another domain). */
   extraHosts?: string[];

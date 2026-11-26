@@ -94,6 +94,22 @@ function formatTime(ms: number): string {
           (player as any).goto?.(offset);
         });
         clicksContainer.appendChild(tick);
+      } else if (e.type === 5 && e.data?.tag === "error") {
+        const offset = Math.max(0, e.timestamp - start);
+        const pct = Math.min(100, Math.max(0, (offset / total) * 100));
+        const msg = String(e.data?.payload?.msg ?? "JS error").slice(0, 120);
+
+        const tick = document.createElement("button");
+        tick.type = "button";
+        tick.className = "csa-error-tick";
+        tick.style.left = `${pct.toFixed(2)}%`;
+        tick.title = `Error · ${formatTime(offset)} · ${msg}`;
+        tick.setAttribute("aria-label", `Error at ${formatTime(offset)}: ${msg}`);
+        tick.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          (player as any).goto?.(offset);
+        });
+        clicksContainer.appendChild(tick);
       }
     }
     progress.appendChild(clicksContainer);

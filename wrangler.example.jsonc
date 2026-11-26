@@ -49,7 +49,9 @@
     "BOTS": { "since": "__BOTS_SINCE__" },
     /* One entry per product. `domain`: registrable domain (the consent cookie is set on it).
        `collect`: the host this Worker answers on for it. `replay`: session replay of signed-in
-       users. `currency`: what revenue is summed in. */
+       users (`replayDailyCap` sessions a day). Optional `replayVisitors: true` also records website
+       visitors who accepted analytics, with their own `replayVisitorDailyCap`. `currency`: what
+       revenue is summed in. */
     "PRODUCTS": __PRODUCTS__
   },
 

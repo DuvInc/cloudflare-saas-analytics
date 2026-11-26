@@ -11,16 +11,19 @@
 */
 import { gzipSync, strToU8 } from "fflate";
 
-export type Chunk = { session: string; query: string; events: unknown[] };
+export type Chunk = { session: string; query: string; json: string };
 export type Answer = "ok" | "stop" | "refused" | "unauthorized" | "failed";
 
-type KeptChunk = { s: string; q: string; b: string };
+type KeptChunk = { s: string; q: string; b: string; n?: number };
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export const KEEPALIVE_LIMIT = 60_000;
+// Leave room below the server's 512 KiB gzip limit, even for poorly compressible events.
+export const REPLAY_BATCH_BYTES = 256 * 1024;
 const KEPT = "csa_rs_pending";
 /** sessionStorage holds about 5 MB per origin and the product needs it too. */
 const KEPT_LIMIT = 1_500_000;
+const MAX_TRIES = 5;
 
 const toBase64 = (bytes: Uint8Array) => {
   let text = "";
@@ -38,7 +41,10 @@ export function chunkDelivery(deps: {
   onAnswer: (answer: Answer, session: string) => void;
 }) {
   const inFlight = new Set<Chunk>();
+  const posting = new Set<string>();
+  const discarded = new Set<string>();
   let draining = false;
+  const keyOf = (s: string, q: string) => `${s}\0${q}`;
 
   const kept = (): KeptChunk[] => {
     try { return JSON.parse(deps.store.getItem(KEPT) ?? "[]") as KeptChunk[]; } catch { return []; }
@@ -47,6 +53,8 @@ export function chunkDelivery(deps: {
     try { if (list.length) deps.store.setItem(KEPT, JSON.stringify(list)); else deps.store.removeItem(KEPT); } catch { /* full or private mode: the chunk can only be lost */ }
   };
   const keep = (chunk: KeptChunk) => {
+    if (discarded.has(chunk.s)) return;
+    if ((chunk.n ?? 0) >= MAX_TRIES) { forget(chunk.s, chunk.q); return; }
     const list = kept().filter((k) => !(k.s === chunk.s && k.q === chunk.q));
     if (list.reduce((total, k) => total + k.b.length, 0) + chunk.b.length > KEPT_LIMIT) return;
     save([...list, chunk]);
@@ -57,15 +65,15 @@ export function chunkDelivery(deps: {
     if (left.length !== list.length) save(left);
   };
 
-  const body = (gz: Uint8Array) => {
-    const prefix = new TextEncoder().encode(`${deps.token()}\n`);
+  const body = (tok: string, gz: Uint8Array) => {
+    const prefix = new TextEncoder().encode(`${tok}\n`);
     const payload = new Uint8Array(prefix.byteLength + gz.byteLength);
     payload.set(prefix, 0);
     payload.set(gz, prefix.byteLength);
     return payload;
   };
-  const post = (query: string, payload: Uint8Array, keepalive: boolean) =>
-    deps.send(`${deps.endpoint}?${query}`, { method: "POST", body: payload, keepalive, credentials: "omit", mode: "cors" });
+  const post = (tok: string, query: string, payload: Uint8Array, keepalive: boolean) =>
+    deps.send(`${deps.endpoint}?${query}`, { method: "POST", body: payload, keepalive, credentials: tok === "visitor" ? "include" : "omit", mode: "cors" });
 
   const answerOf = async (res: Response): Promise<Answer> => {
     if (res.status === 401) return "unauthorized";
@@ -77,33 +85,62 @@ export function chunkDelivery(deps: {
   const settled = (res: Response) => res.status < 500 && res.status !== 429;
 
   return {
+    discard(session: string) {
+      discarded.add(session);
+      for (const chunk of inFlight) if (chunk.session === session) inFlight.delete(chunk);
+      save(kept().filter((chunk) => chunk.s !== session));
+    },
+
     /** The ordinary path, with the page staying: compress off the main thread. */
     async send(chunk: Chunk) {
+      discarded.delete(chunk.session);
       inFlight.add(chunk);
+      const k = keyOf(chunk.session, chunk.query);
+      let gz: Uint8Array | null = null;
       try {
-        const gz = new Uint8Array(await new Response(new Blob([JSON.stringify(chunk.events)]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
-        if (!inFlight.has(chunk)) return; // the page started leaving: sendNow took it over
-        const res = await post(chunk.query, body(gz), false);
+        gz = new Uint8Array(await new Response(new Blob([chunk.json]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
+        const tok = deps.token();
+        if (!inFlight.has(chunk) || discarded.has(chunk.session) || !tok) { inFlight.delete(chunk); return; }
+        posting.add(k);
+        const res = await post(tok, chunk.query, body(tok, gz), false);
         inFlight.delete(chunk);
-        forget(chunk.session, chunk.query);
+        posting.delete(k);
+        if (discarded.has(chunk.session)) return;
+        if (settled(res)) forget(chunk.session, chunk.query);
+        else keep({ s: chunk.session, q: chunk.query, b: toBase64(gz), n: 1 });
         deps.onAnswer(await answerOf(res), chunk.session);
-      } catch { /* a network failure: the replay has a gap, the page is untouched */ }
-      inFlight.delete(chunk);
+      } catch {
+        posting.delete(k);
+        /* A transient network drop: keep the compressed chunk so the next visible/drain resends it. */
+        if (inFlight.delete(chunk) && gz && !discarded.has(chunk.session)) {
+          keep({ s: chunk.session, q: chunk.query, b: toBase64(gz), n: 1 });
+        }
+      }
     },
 
     /** The page may be going away: nothing here may wait, not even one tick. */
     sendNow(chunks: Chunk[]) {
+      const tok = deps.token();
+      if (!tok) return;
       let allowance = KEEPALIVE_LIMIT;
       for (const chunk of [...inFlight, ...chunks]) {
         inFlight.delete(chunk);
-        const gz = gzipSync(strToU8(JSON.stringify(chunk.events)));
-        keep({ s: chunk.session, q: chunk.query, b: toBase64(gz) });
-        const payload = body(gz);
+        if (discarded.has(chunk.session)) continue;
+        const gz = gzipSync(strToU8(chunk.json));
+        keep({ s: chunk.session, q: chunk.query, b: toBase64(gz), n: 1 });
+        const payload = body(tok, gz);
         const keepalive = payload.byteLength <= allowance;
         if (keepalive) allowance -= payload.byteLength;
-        post(chunk.query, payload, keepalive)
-          .then(async (res) => { forget(chunk.session, chunk.query); deps.onAnswer(await answerOf(res), chunk.session); })
-          .catch(() => { /* still kept: the next page in this tab sends it */ });
+        const k = keyOf(chunk.session, chunk.query);
+        posting.add(k);
+        post(tok, chunk.query, payload, keepalive)
+          .then(async (res) => {
+            posting.delete(k);
+            if (discarded.has(chunk.session)) return;
+            if (settled(res)) forget(chunk.session, chunk.query);
+            deps.onAnswer(await answerOf(res), chunk.session);
+          })
+          .catch(() => { posting.delete(k); /* still kept: the next page in this tab sends it */ });
       }
     },
 
@@ -113,10 +150,26 @@ export function chunkDelivery(deps: {
       draining = true;
       try {
         for (const chunk of kept()) {
+          const tok = deps.token();
+          if (!tok) return;
+          if (discarded.has(chunk.s)) { forget(chunk.s, chunk.q); continue; }
+          const k = keyOf(chunk.s, chunk.q);
+          if (posting.has(k)) continue;
+          const tries = (chunk.n ?? 0) + 1;
+          if (tries > MAX_TRIES) { forget(chunk.s, chunk.q); deps.onAnswer("failed", chunk.s); continue; }
+          posting.add(k);
           try {
-            const res = await post(chunk.q, body(fromBase64(chunk.b)), false);
+            const res = await post(tok, chunk.q, body(tok, fromBase64(chunk.b)), false);
+            posting.delete(k);
+            if (discarded.has(chunk.s)) { forget(chunk.s, chunk.q); continue; }
             if (settled(res)) forget(chunk.s, chunk.q);
-          } catch { return; /* offline: the next page tries again */ }
+            else keep({ ...chunk, n: tries });
+            deps.onAnswer(await answerOf(res), chunk.s);
+          } catch {
+            posting.delete(k);
+            keep({ ...chunk, n: tries });
+            return; /* offline: the next page tries again */
+          }
         }
       } finally { draining = false; }
     },
