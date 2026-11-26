@@ -290,6 +290,36 @@ describe("Session replay security & deduplication", () => {
   });
 });
 
+describe("Visitor session replay", () => {
+  const gz = gzipSync(Buffer.from(JSON.stringify([{ type: 4, timestamp: 1000, data: {} }])));
+  const frame = (token: string) => { const f = new Uint8Array(token.length + 1 + gz.byteLength); f.set(new TextEncoder().encode(`${token}\n`), 0); f.set(gz, token.length + 1); return f; };
+  const req = (session: string, cookie?: string) => new Request(`https://t.acme.com/r?s=${session}&q=0&c=0&er=0&pg=/`, {
+    method: "POST", headers: { origin: "https://acme.com", "cf-connecting-ip": "198.51.100.9", ...(cookie ? { cookie } : {}) }, body: frame("visitor") as BufferSource,
+  });
+  const site = { ...PRODUCTS[0]!, replayVisitors: true, replayVisitorDailyCap: 1, replayDailyCap: 1 };
+
+  it("records only a visitor who carries the consent cookie, on a product that allows it", async () => {
+    const { env, sqlite, objects } = fullTestEnv();
+    const anon = "a_0123456789abcdefghijKL";
+    expect(await (await handleReplay(req("rs_AAAAAAAAAAAAAAAAAAAA"), env, site)).json()).toEqual({ stop: true, reason: "no_consent" });
+    expect(await (await handleReplay(req("rs_AAAAAAAAAAAAAAAAAAAA", `csa_id=${anon}`), env, PRODUCTS[0]!)).json()).toEqual({ stop: true, reason: "no_consent" });
+    expect(objects.size).toBe(0);
+    expect((await handleReplay(req("rs_AAAAAAAAAAAAAAAAAAAA", `csa_id=${anon}`), env, site)).status).toBe(204);
+    expect(sqlite.prepare("SELECT user_id FROM replay_sessions").get()).toEqual({ user_id: anon });
+    sqlite.close();
+  });
+
+  it("counts visitors and signed-in users against separate daily caps", async () => {
+    const { env, sqlite } = fullTestEnv();
+    expect((await handleReplay(req("rs_AAAAAAAAAAAAAAAAAAAA", "csa_id=a_0123456789abcdefghijKL"), env, site)).status).toBe(204);
+    expect(await (await handleReplay(req("rs_BBBBBBBBBBBBBBBBBBBB", "csa_id=a_ZZZZZZZZZZZZZZZZZZZZZZ"), env, site)).json()).toEqual({ stop: true, reason: "daily_cap" });
+    const token = await signUser(env, site.id, "usr_alice");
+    const signedIn = new Request("https://t.acme.com/r?s=rs_CCCCCCCCCCCCCCCCCCCC&q=0&c=0&er=0&pg=/", { method: "POST", headers: { origin: "https://acme.com", "cf-connecting-ip": "198.51.100.9" }, body: frame(token) as BufferSource });
+    expect((await handleReplay(signedIn, env, site)).status).toBe(204);
+    sqlite.close();
+  });
+});
+
 describe("Operator auth hardening & asset protection", () => {
   it("evicts oldest challenges FIFO instead of locking out login after 200 challenges, and gates /android/* and /player.js", async () => {
     const { env, sqlite, ctx } = fullTestEnv();

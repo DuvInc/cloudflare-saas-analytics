@@ -20,8 +20,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-type Replay = { id: string; product: string; user_id: string; email: string | null; started_at: number; last_at: number; clicks: number; errors: number; pages: string; chunks: number };
+type Replay = { id: string; product: string; user_id: string; person_id?: string; email: string | null; started_at: number; last_at: number; clicks: number; errors: number; pages: string; chunks: number };
+/** An anonymous visitor (recorded by their consent cookie) who has not signed up: no person to open. */
+const visitor = (r: Replay) => (r.person_id ?? r.user_id).startsWith("a_");
+const who = (r: Replay) => r.email ?? (visitor(r) ? "Visitor" : r.person_id ?? r.user_id);
 const MIN = [["0", "Any length"], ["30", "30s+"], ["60", "1m+"], ["300", "5m+"]] as const;
+const KINDS = [["all", "All"], ["app", "Signed-in"], ["visitor", "Visitors"]] as const;
 
 function loadPlayer(): Promise<void> {
   const w = window as any;
@@ -54,9 +58,10 @@ function Player({ r, productName }: { r: Replay; productName: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Avatar seed={r.user_id} label={r.email ?? r.user_id} />
+        <Avatar seed={r.user_id} label={who(r)} />
         <div className="flex min-w-0 flex-col">
-          <a href={href("/people", { open: `${r.product}/${r.user_id}`, tab: "activity" })} className="truncate font-semibold hover:underline">{r.email ?? r.user_id}</a>
+          {visitor(r) ? <span className="truncate font-semibold">{who(r)}</span>
+            : <a href={href("/people", { open: `${r.product}/${r.person_id ?? r.user_id}`, tab: "activity" })} className="truncate font-semibold hover:underline">{who(r)}</a>}
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><ProductIcon id={r.product} name={productName} className="size-4 rounded" />{productName} · {when(r.started_at)} · {duration(r.last_at - r.started_at)} · {r.clicks} clicks{r.errors ? ` · ${r.errors} errors` : ""}</span>
         </div>
       </div>
@@ -81,6 +86,8 @@ export function ReplaysScreen({ me }: { me: Me }) {
   const { params } = useRoute();
   const days = periodFrom(params);
   const product = params.get("product") ?? "";
+  const kind = params.get("kind") ?? "all";
+  const chosenId = params.get("id") ?? "";
   const q = params.get("q") ?? "";
   const min = params.get("min") ?? "0";
   const errorsOnly = params.get("errors") === "1";
@@ -88,16 +95,25 @@ export function ReplaysScreen({ me }: { me: Me }) {
   const [text, setText] = useState(q);
   const [pageText, setPageText] = useState(page);
   useEffect(() => { const t = setTimeout(() => (text !== q || pageText !== page) && patchParams({ q: text || null, page: pageText || null }), 250); return () => clearTimeout(t); }, [text, pageText]);
-  const { data, error, current, reload } = useData<{ replays: Replay[] }>(`/api/replays?days=${days}${product ? `&product=${product}` : ""}`);
+  const apiParams = new URLSearchParams({ days: String(days) });
+  if (product) apiParams.set("product", product);
+  if (kind === "app" || kind === "visitor") apiParams.set("kind", kind);
+  const { data, error, current, reload } = useData<{ replays: Replay[] }>(`/api/replays?${apiParams.toString()}`);
+  const inList = (data?.replays ?? []).find((r) => r.id === chosenId);
+  /* Only fetch a single session row when a direct link points outside the loaded 200-session window. */
+  const needDirect = Boolean(chosenId && data && !inList);
+  const { data: directData } = useData<{ replays: Replay[] }>(needDirect ? `/api/replays?id=${encodeURIComponent(chosenId)}` : null);
   const name = (id: string) => me.products.find((p) => p.id === id)?.name ?? id;
   const list = (data?.replays ?? []).filter((r) =>
-    (!q || (r.email ?? r.user_id).toLowerCase().includes(q.toLowerCase())) &&
+    (!q || who(r).toLowerCase().includes(q.toLowerCase())) &&
     (r.last_at - r.started_at) / 1000 >= Number(min) &&
     (!errorsOnly || r.errors > 0) &&
     (!page || (r.pages || "").toLowerCase().includes(page.toLowerCase())));
   /* Phones show one screen at a time: the list, or the chosen session. */
-  const chosen = !!params.get("id");
-  const selected = list.find((r) => r.id === params.get("id")) ?? (data?.replays ?? []).find((r) => r.id === params.get("id")) ?? list[0];
+  const chosen = !!chosenId;
+  const directMatch = directData?.replays?.[0];
+  const selected = chosenId ? (inList ?? directMatch) : list[0];
+  const missingExplicit = Boolean(chosenId && data && !inList && directData && !directMatch);
 
   return (
     <div className="flex flex-col gap-5">
@@ -118,6 +134,9 @@ export function ReplaysScreen({ me }: { me: Me }) {
           <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Person" aria-label="Person" className="h-8 w-48 pl-8 text-[0.8125rem]" />
         </div>
         <Input value={pageText} onChange={(e) => setPageText(e.target.value)} placeholder="Page seen: /billing" aria-label="Page seen" className="h-8 w-48 font-mono text-[0.8125rem]" />
+        <ToggleGroup variant="segmented" value={[kind]} onValueChange={(v: string[]) => v[0] && patchParams({ kind: v[0] === "all" ? null : v[0] })} aria-label="Audience">
+          {KINDS.map(([k, l]) => <ToggleGroupItem key={k} value={k} className="px-2.5 text-[0.8125rem]">{l}</ToggleGroupItem>)}
+        </ToggleGroup>
         <ToggleGroup variant="segmented" value={[min]} onValueChange={(v: string[]) => v[0] && patchParams({ min: v[0] === "0" ? null : v[0] })} aria-label="Minimum length">
           {MIN.map(([k, l]) => <ToggleGroupItem key={k} value={k} className="px-2.5 text-[0.8125rem]">{l}</ToggleGroupItem>)}
         </ToggleGroup>
@@ -141,7 +160,7 @@ export function ReplaysScreen({ me }: { me: Me }) {
                   className={cn("flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50", on && "bg-muted")}>
                   <span className="flex items-center gap-2">
                     <ProductIcon id={r.product} name={name(r.product)} className="size-5 rounded-md" />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.email ?? r.user_id}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{who(r)}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">{ago(r.started_at)}</span>
                   </span>
                   <span className="flex items-center gap-3 pl-7 text-xs text-muted-foreground tabular-nums">
@@ -158,7 +177,8 @@ export function ReplaysScreen({ me }: { me: Me }) {
         <div className={cn("min-w-0", !chosen && "hidden lg:block")}>
           {chosen && <button type="button" onClick={() => history.length > 1 ? history.back() : patchParams({ id: null })} className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground lg:hidden"><ArrowLeft className="size-4" />All sessions</button>}
           {selected ? <Player key={selected.id} r={selected} productName={name(selected.product)} />
-            : data && <p className="flex h-80 items-center justify-center rounded-xl border text-sm text-muted-foreground">Only signed-in people are recorded.</p>}
+            : missingExplicit ? <p className="flex h-80 items-center justify-center rounded-xl border text-sm text-muted-foreground">Session not found or expired (replays are kept 30 days).</p>
+            : data && <p className="flex h-80 items-center justify-center rounded-xl border text-sm text-muted-foreground">No replay recorded for this period.</p>}
         </div>
       </div>
     </div>

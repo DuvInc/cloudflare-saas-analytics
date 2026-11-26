@@ -89,7 +89,7 @@ host `*` only), and tops as JSON `[{k, views, visits, visitors}]` (100 max): `pa
   charge). `attribution` is the person's `first_touch` copied at payment time. `livemode = 0` is
   test mode: exclude it.
 - `replay_sessions`: `id` (`rs_...`), `user_id`, `started_at`, `last_at`, `chunks`, `bytes`,
-  `clicks`, `errors` (uncaught errors in the page), `pages`, `day`.
+  `clicks` (rage-clicks counted once per 600 ms), `errors` (uncaught errors in the page; the first 20 are also in the chunks as rrweb custom events tagged `error`), `pages`, `day`. A visitor's `user_id` starts with `a_`.
 
 ## Traps (read before concluding)
 
@@ -111,8 +111,10 @@ host `*` only), and tops as JSON `[{k, views, visits, visitors}]` (100 max): `pa
    so no `$host` filtering is needed, unlike PostHog.
 8. **Revenue currency**: `revenue_cents` sums every payment of the day whatever its currency;
    check `payments.currency` before comparing products.
-9. **Replays are signed-in users only**, everything in clear (customers' content included) except
-   passwords and `[data-secret]` blocks; pages showing API keys are absent. A missing page in a
+9. **Replays are signed-in users**, plus consented website visitors on a product with
+   `replayVisitors` (their `user_id` is the `a_...` consent id, resolved to the account through
+   `identities` once they sign up). Masking follows the page's `data-mask-inputs`, everything in
+   clear by default except passwords and `[data-secret]` blocks; pages showing API keys are absent. A missing page in a
    replay is often an excluded path, not a bug.
 
 ## Examples

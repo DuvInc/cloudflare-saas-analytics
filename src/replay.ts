@@ -2,14 +2,16 @@
   POST https://t.<product domain>/r?s=<session>&q=<seq>&k=<user token>&c=<clicks>&er=<errors>&pg=<path>
   Body: one gzip chunk of rrweb events (JSON array), compressed in the browser.
 
-  Signed-in users only: no valid user token, no write. Bounded: 512 KB per chunk, 720 chunks per
+  Signed-in users, by a valid user token. Visitors too where the product allows it (`replayVisitors`):
+  the token is the word `visitor` and the subject is the `csa_id` cookie, which the server sets only
+  after the visitor accepted analytics; no cookie, no write. Bounded: 512 KB per chunk, 720 chunks per
   session (6 h at one every 30 s), `replayDailyCap` new sessions per product and UTC day, and the
   same rate limits as the collector. Chunks live 30 days (R2 lifecycle rule on `replays/`).
 */
 import { corsHeaders, killed } from "./collect";
 import type { Env } from "./env";
 import { gunzipBounded, rateLimitIpKey, readBoundedBytes } from "./http-security";
-import { utcDay, verifyUser } from "./identity";
+import { ANON_COOKIE, readCookie, utcDay, validAnon, verifyUser } from "./identity";
 import { pool } from "./pool";
 import type { Product } from "./products";
 
@@ -17,6 +19,8 @@ const MAX_CHUNK = 512 * 1024;
 const MAX_CHUNK_UNCOMPRESSED = 4 * 1024 * 1024;
 const MAX_SESSION_UNCOMPRESSED = 32 * 1024 * 1024;
 const MAX_SEQ = 720;
+/** The token a visitor's recorder sends instead of a signed user token. */
+export const VISITOR_TOKEN = "visitor";
 
 export async function handleReplay(req: Request, env: Env, p: Product): Promise<Response> {
   const cors = corsHeaders(req.headers.get("origin"), p);
@@ -47,14 +51,26 @@ export async function handleReplay(req: Request, env: Env, p: Product): Promise<
   }
   if (!body.byteLength || body.byteLength > MAX_CHUNK) return reply(413);
 
-  const user = await verifyUser(env, rawToken, p.id);
-  if (!user) return reply(401);
-  const optOut = await env.DB.prepare("SELECT replay_opt_out FROM people WHERE product = ? AND user_id = ?").bind(p.id, user.u).first<{ replay_opt_out: number }>();
-  if (optOut?.replay_opt_out) return reply(200, JSON.stringify({ stop: true }));
+  const visitor = rawToken === VISITOR_TOKEN;
+  let subject: string;
+  if (visitor) {
+    const anon = p.replayVisitors ? validAnon(readCookie(req.headers.get("cookie"), ANON_COOKIE)) : null;
+    if (!anon) return reply(200, JSON.stringify({ stop: true, reason: "no_consent" }));
+    subject = anon;
+  } else {
+    const user = await verifyUser(env, rawToken, p.id);
+    if (!user) return reply(401);
+    const optOut = await env.DB.prepare("SELECT replay_opt_out FROM people WHERE product = ? AND user_id = ?").bind(p.id, user.u).first<{ replay_opt_out: number }>();
+    if (optOut?.replay_opt_out) return reply(200, JSON.stringify({ stop: true }));
+    subject = user.u;
+  }
 
   /* Validate gzip & decompressed byte ceiling at the door so a gzip bomb never enters R2. */
   const unzipped = await gunzipBounded(body, MAX_CHUNK_UNCOMPRESSED);
-  if (!unzipped) return reply(413);
+  if (!unzipped) {
+    console.warn(JSON.stringify({ event: "replay_gzip_rejected", product: p.id, compressedBytes: body.byteLength }));
+    return reply(413);
+  }
   try {
     const parsed = JSON.parse(new TextDecoder().decode(unzipped));
     if (!Array.isArray(parsed)) return reply(400);
@@ -68,15 +84,16 @@ export async function handleReplay(req: Request, env: Env, p: Product): Promise<
   const page = (url.searchParams.get("pg") ?? "").slice(0, 200);
 
   let row = await env.DB.prepare("SELECT product, user_id, day, pages FROM replay_sessions WHERE id = ?").bind(session).first<{ product: string; user_id: string; day: string; pages: string }>();
-  if (row && (row.product !== p.id || row.user_id !== user.u)) return reply(403);
+  if (row && (row.product !== p.id || row.user_id !== subject)) return reply(403);
   if (!row) {
     const today = utcDay(now);
-    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM replay_sessions WHERE product = ? AND day = ?").bind(p.id, today).first<{ n: number }>();
-    if ((count?.n ?? 0) >= p.replayDailyCap) return reply(200, JSON.stringify({ stop: true, reason: "daily_cap" }));
+    /* Visitors and signed-in users have a cap each: a busy site never stops the app's replays. */
+    const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM replay_sessions WHERE product = ? AND day = ? AND user_id ${visitor ? "" : "NOT "}LIKE 'a\\_%' ESCAPE '\\'`).bind(p.id, today).first<{ n: number }>();
+    if ((count?.n ?? 0) >= (visitor ? p.replayVisitorDailyCap ?? 0 : p.replayDailyCap)) return reply(200, JSON.stringify({ stop: true, reason: "daily_cap" }));
     await env.DB.prepare("INSERT OR IGNORE INTO replay_sessions (id, product, user_id, host, started_at, last_at, day, pages) VALUES (?, ?, ?, ?, ?, ?, ?, '[]')")
-      .bind(session, p.id, user.u, new URL(req.headers.get("origin") ?? "https://x").hostname, now, now, today).run();
+      .bind(session, p.id, subject, new URL(req.headers.get("origin") ?? "https://x").hostname, now, now, today).run();
     const reread = await env.DB.prepare("SELECT product, user_id, day, pages FROM replay_sessions WHERE id = ?").bind(session).first<{ product: string; user_id: string; day: string; pages: string }>();
-    if (!reread || reread.product !== p.id || reread.user_id !== user.u) return reply(403);
+    if (!reread || reread.product !== p.id || reread.user_id !== subject) return reply(403);
     row = reread;
   }
 

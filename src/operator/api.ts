@@ -297,9 +297,23 @@ export async function operatorApi(request: Request, env: Env): Promise<Response>
       res = person ? json({ person, payments, replays, identities }) : json({ error: { code: "not_found" } }, 404);
     } else if (path === "/api/replays") {
       const product = url.searchParams.get("product") ?? "";
-      const rows = await env.DB.prepare(`SELECT r.*, p.email FROM replay_sessions r LEFT JOIN people p ON p.product = r.product AND p.user_id = r.user_id
-          WHERE (?1 = '' OR r.product = ?1) AND r.day >= ?2 ORDER BY r.started_at DESC LIMIT 200`).bind(product, from).all();
-      res = json({ replays: rows.results ?? [] });
+      const kind = url.searchParams.get("kind") ?? "";
+      const id = url.searchParams.get("id") ?? "";
+      /* Filter on resolved person_id so a visitor who signed up matches their label. */
+      const kindClause = kind === "app" ? " AND COALESCE(i.user_id, r.user_id) NOT LIKE 'a\\_%' ESCAPE '\\'"
+        : kind === "visitor" ? " AND COALESCE(i.user_id, r.user_id) LIKE 'a\\_%' ESCAPE '\\'" : "";
+      /* A visitor's replay (user_id is their `a_` cookie) shows under their account once they signed up. */
+      const baseSelect = `SELECT r.*, COALESCE(i.user_id, r.user_id) AS person_id, p.email FROM replay_sessions r
+          LEFT JOIN identities i ON i.product = r.product AND i.kind = 'anon' AND i.value = r.user_id
+          LEFT JOIN people p ON p.product = r.product AND p.user_id = COALESCE(i.user_id, r.user_id)`;
+      if (/^rs_[A-Za-z0-9]{16,32}$/.test(id)) {
+        const direct = await env.DB.prepare(`${baseSelect} WHERE r.id = ?1`).bind(id).first();
+        res = json({ replays: direct ? [direct] : [] });
+      } else {
+        const rows = await env.DB.prepare(`${baseSelect}
+            WHERE (?1 = '' OR r.product = ?1) AND r.day >= ?2${kindClause} ORDER BY r.started_at DESC LIMIT 200`).bind(product, from).all();
+        res = json({ replays: rows.results ?? [] });
+      }
     } else if ((m = /^\/api\/replay\/(rs_[A-Za-z0-9]+)$/.exec(path))) {
       const row = await env.DB.prepare("SELECT product, day FROM replay_sessions WHERE id = ?").bind(m[1]).first<{ product: string; day: string }>();
       res = row ? json({ events: await replayEvents(env, row.product, row.day, m[1]!) }) : json({ error: { code: "not_found" } }, 404);

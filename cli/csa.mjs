@@ -9,7 +9,7 @@
  *   csa pages --product P [--days]      top pages and entry pages
  *   csa funnel --product P [--days]     visitors -> signups -> activated -> paid, by channel
  *   csa user <email|user_id>            one person: origin, events, payments, replays
- *   csa replays [--product P] [--days 7]   recorded sessions (signed-in users), worst first
+ *   csa replays [--product P] [--days 7]   recorded sessions (signed-in users and consented visitors), worst first
  *   csa replay <rs_id> --out /absolute/private/dir   validated replay and timeline (local sensitive files)
  *   csa today [--product P]             live numbers from today's raw files (not yet rolled up)
  *   csa health                          ledger and alerts
