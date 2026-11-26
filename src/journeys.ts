@@ -12,7 +12,18 @@ import { utcDay } from "./identity";
 import { pool } from "./pool";
 import { ReadContext } from "./read-context";
 
-export type Step = { kind: "page" | "event"; value: string; paths?: string[] };
+/**
+ * A funnel step. `where` narrows an event step to the ones whose properties have these values
+ * ({ "is_sample": false }, { "choice": "one_off" }): one event, several meanings, without a new
+ * event name per meaning. `label` is what the dashboard shows instead of the raw value.
+ */
+export type Step = { kind: "page" | "event"; value: string; paths?: string[]; where?: Record<string, string | number | boolean>; label?: string };
+
+function propsOf(e: Raw): Record<string, unknown> {
+  if (!e.props) return {};
+  if (typeof e.props === "object") return e.props as Record<string, unknown>;
+  try { return JSON.parse(String(e.props)) as Record<string, unknown>; } catch { return {}; }
+}
 
 export async function periodEvents(env: Env, product: string, days: number, context = new ReadContext(env)): Promise<Raw[]> {
   const today = utcDay(Date.now());
@@ -43,7 +54,15 @@ export function personOf(e: Raw, alias: Map<string, string>): string | null {
 }
 
 function compileStep(s: Step): (e: Raw) => boolean {
-  if (s.kind === "event") return (e) => e.event === s.value;
+  if (s.kind === "event") {
+    const where = Object.entries(s.where ?? {});
+    if (!where.length) return (e) => e.event === s.value;
+    return (e) => {
+      if (e.event !== s.value) return false;
+      const props = propsOf(e);
+      return where.every(([key, value]) => props[key] === value);
+    };
+  }
   const matchers = (s.paths ?? [s.value]).map((pattern) => {
     if (!pattern.includes("*")) return (path: string) => path === pattern;
     const re = new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);

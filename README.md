@@ -152,7 +152,9 @@ For an account created by an OAuth return, where the sign-up webhook has no brow
 
 **Natural-language filters** (optional). Set `AI_BASE_URL`, `AI_API_KEY` and `AI_MODEL` (any OpenAI-compatible chat endpoint) and the filter bar gets a box where you type "French traffic on my blog". Unset, the box is hidden.
 
-**Bots** (optional). Secret `CF_ANALYTICS_TOKEN` with Zone Read and Analytics Read on your zones, and a `BOTS` var. Read [BOTS-READING.md](BOTS-READING.md) before concluding anything from these counts.
+**Bots** (optional). Secret `CF_ANALYTICS_TOKEN` with Zone Read and Analytics Read on your zones, and a `BOTS` var. Read [BOTS-READING.md](BOTS-READING.md) before concluding anything from these counts. The AI & bots screen also lists the pages, Markdown twins and `llms.txt` that answered 404 to a verified bot, so a crawler hitting a dead address is a line to fix, not a guess.
+
+An hourly gap raises at most one alert per zone per UTC day; a day with missing hours is marked `partial`, and AI & bots flags incomplete counts and hides the period comparison. The cron retries the last 20 closed hours. After an incident, set `BOTS.recoverFrom[zone]` to the first missed UTC hour (`YYYY-MM-DDTHH`, up to seven days back, while Cloudflare still serves it); the job takes fresh hours first and at most 60 windows per run. For a faster catch-up, attach the bots-only cron for a while with `npx wrangler triggers deploy --schedule '17 * * * *' '30,35,40,45,50,55 * * * *'`, then remove `recoverFrom` and deploy the regular schedule once `runs` is complete. When a site moves to a new domain, `BOTS.sinceByZone` and `BOTS.previousZone` join the two zones on the switch date; older raw files keep their original zone in R2.
 
 ### Cloudflare WAF rule (do this)
 

@@ -7,7 +7,7 @@
   (GPTBot, ClaudeBot, meta-externalagent...), then search engines, link previews, SEO tools.
   A family card or a bot row filters the screen (family, bot in the address).
 */
-import { X } from "lucide-react";
+import { AlertCircle, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import type { Me } from "@/lib/api";
 import { compact, day, dayFull, num } from "@/lib/fmt";
@@ -22,6 +22,7 @@ import { Breakdown } from "@/components/breakdown";
 import { ChangeBadge, Spark } from "@/components/trend";
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
 import { Hint } from "@/components/ui/help-tooltip";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -36,6 +37,8 @@ type Data = {
   pages: { answers: { k: string; n: number }[]; crawl: { k: string; n: number }[] };
   kinds: { k: string; n: number }[]; statuses: { k: string; n: number }[]; countries: { k: string; n: number }[];
   traffic: { bot: number; other: number };
+  notFound?: { pages: { host: string; path: string; requests: number }[]; unindexedDays: string[]; truncated: boolean };
+  coverage?: { site: string; day: string }[];
   delivery: { format: string; tool: string; calls: number }[];
 };
 
@@ -138,6 +141,7 @@ export function AiScreen({ me }: { me: Me }) {
   const siteName = (id: string) => (id === "*" ? "All products" : (sites.find((s) => s.id === id)?.name ?? id));
   const aiTotal = d ? d.totals.answers + d.totals.ai_search + d.totals.ai_training : 0;
   const share = d && d.traffic.bot + d.traffic.other ? Math.round((d.traffic.bot / (d.traffic.bot + d.traffic.other)) * 100) : null;
+  const missingSites = [...new Set(d?.coverage?.map(({ site }) => siteName(site)))];
 
   return (
     <div className="flex flex-col gap-6">
@@ -154,6 +158,12 @@ export function AiScreen({ me }: { me: Me }) {
         <PeriodControl days={days} onChange={(n) => patchParams({ days: n })} />
       </PageHeader>
       <ErrorNote error={error} onRetry={reload} />
+      {missingSites.length > 0 && (
+        <Alert variant="warning">
+          <AlertCircle aria-hidden="true" />
+          <AlertDescription>Bot counts are incomplete for {missingSites.join(", ")} in this period.</AlertDescription>
+        </Alert>
+      )}
 
       {(family || bot) && (
         <div className="-mt-2 flex flex-wrap items-center gap-2">
@@ -198,11 +208,35 @@ export function AiScreen({ me }: { me: Me }) {
                 <TableCell className="pr-4 text-right font-medium tabular-nums">{num(b.requests)}</TableCell>
               </TableRow>
             )) : Array.from({ length: 6 }, (_, i) => <TableRow key={i}><TableCell colSpan={6} className="px-4"><span className="block h-6 animate-pulse rounded bg-muted" /></TableCell></TableRow>)}
-            {d && !d.bots.length && <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">No bot in the period</TableCell></TableRow>}
+            {d && !d.bots.length && <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">{missingSites.length ? "No bot data available for this selection" : "No bot in the period"}</TableCell></TableRow>}
           </TableBody>
         </Table>
       </section>
 
+      {d?.notFound && (
+        <section className="min-w-0 space-y-3" aria-labelledby="bot-not-found">
+          <h2 id="bot-not-found" className="text-sm font-semibold">Pages and Markdown returning 404</h2>
+          {d.notFound.unindexedDays.length > 0 && (
+            <p className="text-sm text-muted-foreground">Some earlier 404s are missing from this list.</p>
+          )}
+          {d.notFound.truncated && <p className="text-sm text-muted-foreground">Counts exclude addresses outside each robot’s daily top 200.</p>}
+          {d.notFound.pages.length > 0 ? (
+            <Table className="table-fixed">
+              <TableHeader><TableRow><TableHead>Address</TableHead><TableHead className="w-24 text-right">Requests</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {d.notFound.pages.map(({ host, path, requests }) => (
+                  <TableRow key={JSON.stringify([host, path])}>
+                    <TableCell className="whitespace-normal break-all font-mono text-xs">{host}{path}</TableCell>
+                    <TableCell className="text-right tabular-nums">{num(requests)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <p className="text-sm text-muted-foreground">{d.notFound.unindexedDays.length || missingSites.length ? "No affected address available" : "No matching 404 in this period"}</p>
+          )}
+        </section>
+      )}
       {d && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <SmallList title="What AI fetched" hint="Pages, Markdown twins, llms.txt, sitemaps... requested by AI bots." rows={d.kinds} name={(k) => KIND[k] ?? k} />

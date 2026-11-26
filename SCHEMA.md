@@ -18,8 +18,19 @@ discarded for speed. The 16 MiB cache budget is an estimated weight, not an exac
 
 A funnel may carry `unavailable`: the UI must show why it is not measurable, never interpret it
 as a measured 0% conversion. The definition stays in code. A page step can supply `paths`, an OR
-of literal/glob routes, with `value` as its display label. This includes localized and legacy
-CSR job routes in one population. See PERFORMANCE.md for actual emitter evidence and missing stages.
+of literal/glob routes, with `value` as its display label (localized and legacy routes of one page
+in one population). An event step can carry `where`, property values it must match
+(`{ "is_sample": false }`), and then a `label` for the dashboard: one event, several meanings,
+without a new event name per meaning.
+
+Bot coverage comes from `runs`. A `bots` row marked `ok` can contain zero requests. A
+`bots_day` row is `partial` when any expected hour is missing; its aggregates contain only
+the hours that were collected. AI & bots flags incomplete coverage and suppresses comparisons
+against a period with known gaps. The 404 list groups verified-bot requests by hostname and
+path for pages, Markdown twins and llms.txt (`bot_days.not_found`). Rows rolled up before that
+column existed have a null detail; if they contain 404s, the dashboard marks the list as
+incomplete. Each bot and site-day keeps up to 200 affected addresses, and the dashboard flags
+truncated counts.
 
 Replay candidate duration is elapsed wall time (`last_at - started_at`), not active time.
 Candidate scores are local heuristics, not modeled intention or proof of a customer issue.

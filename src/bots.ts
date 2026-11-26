@@ -15,7 +15,8 @@
     bots/<zone>/totals/<day>/<HH>.ndjson.gz  {hour, day, host, kind, audience: bot|other, requests}
     bots/<zone>/delivery/<day>.ndjson.gz     Analytics Engine sites: what their Worker served agents
   A closed day is then summed into D1 `bot_days` (one row per bot), `traffic_days`, `delivery_days`.
-  The source keeps 24 hours: a failed hour is retried by the next runs, after that it is lost.
+  Failed hours are retried for 20 hours by default. An incident can request up to 7 days
+  for one zone with BOTS.recoverFrom when the source still serves those hours.
   The GraphQL API caps a result at 10,000 groups without saying so: a full window is halved down to
   15 minutes.
 
@@ -40,7 +41,7 @@ const NAME_RULES: [RegExp, Family][] = [
   /* Collecting text to train models. */
   [/^(GPTBot|ClaudeBot|anthropic-ai|CCBot|Google-Extended|GoogleOther|Applebot-Extended|Bytespider|meta-externalagent|FacebookBot|Amazonbot|cohere-ai|AI2Bot|Diffbot|ImagesiftBot|Timpibot|omgili)/i, "ai_training"],
   [/^(Googlebot|bingbot|BingPreview|DuckDuckBot|YandexBot|Baiduspider|Applebot|Yeti|PetalBot|SeznamBot|Qwantbot|Mojeek)/i, "search"],
-  [/^(facebookexternalhit|LinkedInBot|Slackbot|Discordbot|TelegramBot|TwitterBot|WhatsApp|Pinterest|redditbot|SkypeUriPreview)/i, "preview"],
+  [/^(facebookexternalhit|LinkedInBot|Slackbot|Discordbot|TelegramBot|TwitterBot|WhatsApp|Pinterest|redditbot|SkypeUriPreview|Iframely|Embedly)/i, "preview"],
   [/^(AhrefsBot|SemrushBot|MJ12bot|DotBot|Screaming|SEOkicks|serpstat|DataForSeo)/i, "seo"],
 ];
 const CATEGORY_RULES: Record<string, Family> = {
@@ -64,7 +65,7 @@ export function kindOf(path: string): string {
   return "page";
 }
 
-const KNOWN = /(GPTBot|OAI-SearchBot|ChatGPT-User|ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai|PerplexityBot|Perplexity-User|Google-Extended|GoogleOther|Applebot-Extended|meta-externalagent|meta-externalfetcher|FacebookBot|Amazonbot|CCBot|cohere-ai|Bytespider|DuckAssistBot|MistralAI-User|bingbot|BingPreview|Googlebot|SemrushBot|AhrefsBot|Applebot|DuckDuckBot|YandexBot|Baiduspider|facebookexternalhit|LinkedInBot|Slackbot|Discordbot|TelegramBot|TwitterBot|WhatsApp|Yeti)/i;
+const KNOWN = /(GPTBot|OAI-SearchBot|ChatGPT-User|ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai|PerplexityBot|Perplexity-User|Google-Extended|GoogleOther|Applebot-Extended|meta-externalagent|meta-externalfetcher|FacebookBot|Amazonbot|CCBot|cohere-ai|Bytespider|DuckAssistBot|MistralAI-User|bingbot|BingPreview|Googlebot|SemrushBot|AhrefsBot|Applebot|DuckDuckBot|YandexBot|Baiduspider|facebookexternalhit|LinkedInBot|Slackbot|Discordbot|TelegramBot|TwitterBot|WhatsApp|Iframely|Embedly|Yeti)/i;
 /** A verified bot's name, never '': the known list, else a token the User-Agent declares itself. */
 export function botName(userAgent: string): string {
   const known = userAgent.match(KNOWN)?.[1];
@@ -84,10 +85,17 @@ export function botName(userAgent: string): string {
 /* ---------------------------------------------------------------- sites */
 
 export type BotSite = { id: string; name: string; zone: string; delivery?: string };
-type BotsConfig = { since?: string; extraSites?: BotSite[]; delivery?: Record<string, string> };
+type BotsConfig = {
+  since?: string;
+  sinceByZone?: Record<string, string>;
+  previousZone?: Record<string, string>;
+  recoverFrom?: Record<string, string>;
+  extraSites?: BotSite[];
+  delivery?: Record<string, string>;
+};
 export function botsConfig(env: Env): BotsConfig {
-  const raw = (env as any).BOTS;
-  return (typeof raw === "string" ? JSON.parse(raw) : raw) ?? {};
+  const raw = env.BOTS;
+  return ((typeof raw === "string" ? JSON.parse(raw) : raw) ?? {}) as BotsConfig;
 }
 export function botSites(env: Env): BotSite[] {
   const c = botsConfig(env);
@@ -102,8 +110,27 @@ const GRAPHQL = "https://api.cloudflare.com/client/v4/graphql";
 const GROUP_LIMIT = 10_000;
 const HOUR_MS = 3600_000;
 const BACKFILL_HOURS = 20;
+const RECOVERY_HOURS = 7 * 24;
 const MIN_WINDOW_MS = 15 * 60_000;
 const WINDOWS_PER_RUN = 60;
+
+const hourKey = (time: number) => new Date(time).toISOString().slice(0, 13);
+const parseHour = (hour?: string) => hour ? Date.parse(`${hour}:00:00Z`) : 0;
+const lastClosedBotHour = (now: number) => Math.floor(now / HOUR_MS) * HOUR_MS - HOUR_MS;
+const botSiteStart = (config: BotsConfig, site: BotSite) => parseHour(config.sinceByZone?.[site.zone] ?? config.since);
+
+/** Check the most recent hour whose scheduled run had time to finish. */
+export async function missingBotSites(env: Env, sites: BotSite[], now: number) {
+  const due = lastClosedBotHour(now - 22 * 60_000);
+  const hour = hourKey(due);
+  const config = botsConfig(env);
+  const monitored = sites.filter((site) => botSiteStart(config, site) <= due);
+  if (!monitored.length) return [];
+  const keys = monitored.map((site) => `${site.zone}|${hour}`);
+  const rows = await env.DB.prepare(`SELECT key FROM runs WHERE job = 'bots' AND status = 'ok' AND key IN (${keys.map(() => "?").join(",")})`).bind(...keys).all<{ key: string }>();
+  const ok = new Set((rows.results ?? []).map((row) => row.key));
+  return monitored.filter((site) => !ok.has(`${site.zone}|${hour}`)).map((site) => ({ site, hour }));
+}
 
 type ZoneRow = { count: number; dimensions: { clientRequestHTTPHost: string; clientRequestPath: string; userAgent: string; verifiedBotCategory: string; clientCountryName: string; edgeResponseStatus: number } };
 
@@ -137,7 +164,9 @@ async function readWindow(env: Env, zoneId: string, since: number, until: number
   const b = (await r.json()) as { data?: { viewer: { zones: { httpRequestsAdaptiveGroups: ZoneRow[] }[] } }; errors?: { message: string }[] | null };
   if (b.errors?.length) throw new Error(`GraphQL: ${b.errors[0]!.message}`);
   if (!b.data) throw new Error(`GraphQL: no data (HTTP ${r.status})`);
-  const rows = b.data.viewer.zones[0]?.httpRequestsAdaptiveGroups ?? [];
+  const zone = b.data.viewer.zones[0];
+  if (!zone) throw new Error("GraphQL: requested zone is absent");
+  const rows = zone.httpRequestsAdaptiveGroups;
   if (rows.length >= GROUP_LIMIT && until - since > MIN_WINDOW_MS) {
     const mid = since + (until - since) / 2;
     const [a, c] = await Promise.all([readWindow(env, zoneId, since, mid, botsOnly), readWindow(env, zoneId, mid, until, botsOnly)]);
@@ -202,7 +231,10 @@ async function collectDelivery(env: Env, site: BotSite, day: string) {
 
 /* ---------------------------------------------------------------- a day into D1 */
 
-type Agg = { category: string; requests: number; errors: number; pages: Map<string, number>; kinds: Record<string, number>; statuses: Record<string, number>; countries: Record<string, number>; hosts: Record<string, number> };
+export type BotNotFound = { host: string; path: string; requests: number };
+export type BotNotFoundDetail = { pages: BotNotFound[]; truncated: boolean };
+
+type Agg = { category: string; requests: number; errors: number; pages: Map<string, number>; notFound: Map<string, BotNotFound>; kinds: Record<string, number>; statuses: Record<string, number>; countries: Record<string, number>; hosts: Record<string, number> };
 const inc = (o: Record<string, number>, k: string, n: number) => { o[k] = (o[k] ?? 0) + n; };
 
 /** One day of a site's crawl rows summed by bot (also used live for today). */
@@ -211,12 +243,19 @@ export function aggregateCrawl(rows: Record<string, any>[]) {
   for (const r of rows) {
     const bot = r.bot_name || "unknown";
     let a = by.get(bot);
-    if (!a) by.set(bot, (a = { category: r.bot_category ?? "", requests: 0, errors: 0, pages: new Map(), kinds: {}, statuses: {}, countries: {}, hosts: {} }));
+    if (!a) by.set(bot, (a = { category: r.bot_category ?? "", requests: 0, errors: 0, pages: new Map(), notFound: new Map(), kinds: {}, statuses: {}, countries: {}, hosts: {} }));
     const n = Number(r.requests) || 0;
     a.requests += n;
     if (Number(r.status) >= 400) a.errors += n;
-    if (r.kind !== "asset") a.pages.set(r.path, (a.pages.get(r.path) ?? 0) + n);
-    inc(a.kinds, r.kind ?? kindOf(r.path ?? ""), n);
+    const kind = r.kind ?? kindOf(r.path ?? "");
+    if (kind !== "asset") a.pages.set(r.path, (a.pages.get(r.path) ?? 0) + n);
+    if (Number(r.status) === 404 && ["page", "twin", "llms"].includes(kind) && r.host && r.path && n > 0) {
+      const key = JSON.stringify([r.host, r.path]);
+      const entry = a.notFound.get(key) ?? { host: r.host, path: r.path, requests: 0 };
+      entry.requests += n;
+      a.notFound.set(key, entry);
+    }
+    inc(a.kinds, kind, n);
     inc(a.statuses, String(r.status ?? ""), n);
     if (r.country) inc(a.countries, r.country, n);
     if (r.host) inc(a.hosts, r.host, n);
@@ -224,6 +263,10 @@ export function aggregateCrawl(rows: Record<string, any>[]) {
   return [...by.entries()].map(([bot, a]) => ({
     bot, category: a.category, requests: a.requests, errors: a.errors,
     pages: [...a.pages.entries()].sort((x, y) => y[1] - x[1]).slice(0, 200).map(([k, n]) => ({ k, n })),
+    notFound: {
+      pages: [...a.notFound.values()].sort((a, b) => b.requests - a.requests || a.host.localeCompare(b.host) || a.path.localeCompare(b.path)).slice(0, 200),
+      truncated: a.notFound.size > 200,
+    },
     kinds: a.kinds, statuses: a.statuses, countries: a.countries, hosts: a.hosts,
   }));
 }
@@ -241,11 +284,15 @@ export async function dayFiles(bucket: R2Bucket, prefix: string) {
   return parts.flat();
 }
 
-export async function rollupBotDay(env: Env, site: BotSite, day: string) {
-  const [rawCrawl, totals] = await Promise.all([
-    dayFiles(env.BUCKET, `bots/${site.zone}/crawl/${day}/`),
-    dayFiles(env.BUCKET, `bots/${site.zone}/totals/${day}/`),
-  ]);
+export async function rollupBotDay(env: Env, site: BotSite, day: string, transition?: { previousZone: string; switchHour: string }) {
+  const readDay = async (kind: "crawl" | "totals") => {
+    const current = await dayFiles(env.BUCKET, `bots/${site.zone}/${kind}/${day}/`);
+    if (!transition) return current;
+    const { previousZone, switchHour } = transition;
+    const previous = await dayFiles(env.BUCKET, `bots/${previousZone}/${kind}/${day}/`);
+    return [...previous.filter((row) => row.hour < switchHour), ...current.filter((row) => row.hour >= switchHour)];
+  };
+  const [rawCrawl, totals] = await Promise.all([readDay("crawl"), readDay("totals")]);
   const crawl = aggregateCrawl(rawCrawl);
   const aiAnswers = crawl.reduce((s, c) => s + (familyOf(c.bot, c.category) === "answers" ? c.requests : 0), 0);
   const kinds: Record<string, { bot: number; other: number }> = {};
@@ -256,12 +303,10 @@ export async function rollupBotDay(env: Env, site: BotSite, day: string) {
     if (t.audience === "bot") { bot += n; k.bot += n; } else { other += n; k.other += n; }
   }
   const stmts = [env.DB.prepare("DELETE FROM bot_days WHERE site = ? AND day = ?").bind(site.id, day)];
-  for (const c of crawl) stmts.push(env.DB.prepare("INSERT INTO bot_days (site, day, bot, category, requests, errors, pages, kinds, statuses, countries, hosts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(site.id, day, c.bot, c.category, c.requests, c.errors, JSON.stringify(c.pages), JSON.stringify(c.kinds), JSON.stringify(c.statuses), JSON.stringify(c.countries), JSON.stringify(c.hosts)));
-  if (totals.length || crawl.length) {
-    stmts.push(env.DB.prepare("INSERT OR REPLACE INTO traffic_days (site, day, bot_requests, other_requests, kinds, ai_answers) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(site.id, day, bot, other, JSON.stringify(kinds), aiAnswers));
-  }
+  for (const c of crawl) stmts.push(env.DB.prepare("INSERT INTO bot_days (site, day, bot, category, requests, errors, pages, kinds, statuses, countries, hosts, not_found) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(site.id, day, c.bot, c.category, c.requests, c.errors, JSON.stringify(c.pages), JSON.stringify(c.kinds), JSON.stringify(c.statuses), JSON.stringify(c.countries), JSON.stringify(c.hosts), JSON.stringify(c.notFound)));
+  stmts.push(env.DB.prepare("INSERT OR REPLACE INTO traffic_days (site, day, bot_requests, other_requests, kinds, ai_answers) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(site.id, day, bot, other, JSON.stringify(kinds), aiAnswers));
   if (site.delivery) {
     const del = await readLines(env.BUCKET, `bots/${site.zone}/delivery/${day}.ndjson.gz`);
     const m = new Map<string, number>();
@@ -276,38 +321,53 @@ export async function rollupBotDay(env: Env, site: BotSite, day: string) {
 /* ---------------------------------------------------------------- the hourly job */
 
 export async function runBots(env: Env, now = Date.now()) {
-  if (!env.CF_ANALYTICS_TOKEN) return "CF_ANALYTICS_TOKEN not set";
-  const since = botsConfig(env).since ? Date.parse(`${botsConfig(env).since}:00:00Z`) : 0;
+  if (!env.CF_ANALYTICS_TOKEN) throw new Error("CF_ANALYTICS_TOKEN not set");
+  const config = botsConfig(env);
+  const since = parseHour(config.since);
   const sites = botSites(env);
   const ids = await zoneIds(env);
-  const okRows = (await env.DB.prepare("SELECT key FROM runs WHERE job IN ('bots', 'bots_day', 'bots_delivery') AND status = 'ok' AND ran_at >= ?").bind(new Date(now - 10 * 86400_000).toISOString()).all<{ key: string }>()).results ?? [];
-  const ok = new Set(okRows.map((r) => r.key));
+  const runs = (await env.DB.prepare("SELECT key, status FROM runs WHERE job IN ('bots', 'bots_day', 'bots_delivery') AND ran_at >= ?").bind(new Date(now - 10 * 86400_000).toISOString()).all<{ key: string; status: string }>()).results ?? [];
+  const states = new Map(runs.map((r) => [r.key, r.status]));
+  // Reuse the regular three-day reread window to index recent legacy 404s once.
+  const legacy404 = await env.DB.prepare(`SELECT DISTINCT site, day FROM bot_days
+    WHERE day >= ? AND not_found IS NULL AND instr(statuses, '"404":') > 0`)
+    .bind(utcDay(now - 3 * 86400_000)).all<{ site: string; day: string }>();
+  const reindex = new Set((legacy404.results ?? []).map((row) => `${row.site}|${row.day}`));
   /* Track which (zone|day) windows gained late hours or delivery rows in this run so already-rolled
      days are never re-read from R2 unless new data actually arrived. */
   const dirty = new Set<string>();
   let done = 0, failed = 0;
-  const lastClosed = Math.floor(now / HOUR_MS) * HOUR_MS - HOUR_MS;
-  for (let t = lastClosed - (BACKFILL_HOURS - 1) * HOUR_MS; t <= lastClosed && done < WINDOWS_PER_RUN; t += HOUR_MS) {
-    if (t < since) continue;
-    const hourIso = new Date(t).toISOString().slice(0, 13);
-    const hourDay = hourIso.slice(0, 10);
-    for (const site of sites) {
-      const key = `${site.zone}|${hourIso}`;
-      if (ok.has(key) || done >= WINDOWS_PER_RUN) continue;
-      try {
-        const zoneId = ids.get(site.zone);
-        if (!zoneId) throw new Error(`zone ${site.zone} not visible to CF_ANALYTICS_TOKEN`);
-        await mark(env, "bots", key, "ok", `${await collectHour(env, site, zoneId, t)} rows`);
-        dirty.add(`${site.zone}|${hourDay}`);
-        done++;
-      } catch (e) { failed++; await mark(env, "bots", key, "failed", String((e as Error).message)); }
+  const lastClosed = lastClosedBotHour(now);
+  const usualStart = lastClosed - (BACKFILL_HOURS - 1) * HOUR_MS;
+  const recoveryStart = lastClosed - (RECOVERY_HOURS - 1) * HOUR_MS;
+  const windows = sites.flatMap((site) => {
+    const recovery = parseHour(config.recoverFrom?.[site.zone]);
+    const earliest = recovery >= recoveryStart ? Math.min(usualStart, recovery) : usualStart;
+    const first = Math.max(earliest, botSiteStart(config, site));
+    const pending = [];
+    for (let t = lastClosed; t >= first; t -= HOUR_MS) {
+      const key = `${site.zone}|${hourKey(t)}`;
+      if (states.get(key) !== "ok") pending.push({ site, t, key });
     }
+    return pending;
+  });
+  // Live collection takes priority over recovery, including when an earlier window keeps failing.
+  windows.sort((a, b) => b.t - a.t);
+  for (const { site, t, key } of windows.slice(0, WINDOWS_PER_RUN)) {
+    try {
+      const zoneId = ids.get(site.zone);
+      if (!zoneId) throw new Error(`zone ${site.zone} not visible to CF_ANALYTICS_TOKEN`);
+      await mark(env, "bots", key, "ok", `${await collectHour(env, site, zoneId, t)} rows`);
+      states.set(key, "ok");
+      dirty.add(`${site.zone}|${utcDay(t)}`);
+      done++;
+    } catch (e) { failed++; await mark(env, "bots", key, "failed", String((e as Error).message)); }
   }
   /* Analytics Engine sites: a day once it has been over for 3 hours, a week back. */
   for (const site of sites.filter((s) => s.delivery)) {
     for (let i = 7; i >= 1; i--) {
       const day = utcDay(now - i * 86400_000);
-      if (Date.parse(`${day}T00:00:00Z`) < since || Date.parse(`${day}T00:00:00Z`) + 27 * HOUR_MS > now || ok.has(`${site.zone}|${day}|delivery`)) continue;
+      if (Date.parse(`${day}T00:00:00Z`) < since || Date.parse(`${day}T00:00:00Z`) + 27 * HOUR_MS > now || states.get(`${site.zone}|${day}|delivery`) === "ok") continue;
       try {
         await collectDelivery(env, site, day);
         await mark(env, "bots_delivery", `${site.zone}|${day}|delivery`, "ok", "");
@@ -316,16 +376,43 @@ export async function runBots(env: Env, now = Date.now()) {
     }
   }
   /* Closed days (2 hours of margin) into D1: run once per closed day, or again if late data arrived. */
-  let days = 0;
-  for (let i = 3; i >= 1; i--) {
-    const day = utcDay(now - i * 86400_000);
-    if (Date.parse(`${day}T00:00:00Z`) + 26 * HOUR_MS > now || Date.parse(`${day}T00:00:00Z`) + 86400_000 <= since) continue;
-    for (const site of sites) {
-      const key = `${site.zone}|${day}|day`;
-      if (ok.has(key) && !dirty.has(`${site.zone}|${day}`)) continue;
-      try { await rollupBotDay(env, site, day); await mark(env, "bots_day", key, "ok", ""); days++; }
-      catch (e) { failed++; await mark(env, "bots_day", key, "failed", String((e as Error).message)); }
+  let days = 0, partial = 0;
+  for (const site of sites) {
+    const recent = [3, 2, 1].map((i) => utcDay(now - i * 86400_000));
+    const recovery = parseHour(config.recoverFrom?.[site.zone]);
+    if (recovery >= recoveryStart) {
+      for (let t = recovery; t < now; t += 24 * HOUR_MS) recent.push(utcDay(t));
+    }
+    const prefix = `${site.zone}|`;
+    const touched = [...dirty].filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length));
+    for (const day of new Set([...recent, ...touched])) {
+      const start = Date.parse(`${day}T00:00:00Z`);
+      const end = start + 24 * HOUR_MS;
+      const siteStart = botSiteStart(config, site);
+      const previousZone = start < siteStart && siteStart < end ? config.previousZone?.[site.zone] : undefined;
+      const first = previousZone ? start : Math.max(start, siteStart);
+      if (end + 2 * HOUR_MS > now || first >= end) continue;
+      const dayKey = `${prefix}${day}`;
+      const key = `${dayKey}|day`;
+      let collected = 0;
+      const expected = (end - first) / HOUR_MS;
+      for (let t = first; t < end; t += HOUR_MS) {
+        const zone = t < siteStart ? previousZone : site.zone;
+        if (states.get(`${zone}|${hourKey(t)}`) === "ok") collected++;
+      }
+      const status = collected === expected ? "ok" : "partial";
+      const previous = states.get(key);
+      if (previous === status && !dirty.has(dayKey) && !reindex.has(`${site.id}|${day}`)) continue;
+      try {
+        if (collected) await rollupBotDay(env, site, day, previousZone ? { previousZone, switchHour: hourKey(siteStart) } : undefined);
+        await mark(env, "bots_day", key, status, `${collected}/${expected} hours collected`);
+        if (status === "ok") days++;
+        else partial++;
+      } catch (e) {
+        failed++;
+        await mark(env, "bots_day", key, "failed", String((e as Error).message));
+      }
     }
   }
-  return `${done} hours, ${days} days, ${failed} failed`;
+  return `${done} hours, ${days} days, ${partial} partial days, ${failed} failed`;
 }

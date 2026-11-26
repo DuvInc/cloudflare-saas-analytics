@@ -12,6 +12,7 @@
 import type { Env } from "./env";
 import { utcDay } from "./identity";
 import { products } from "./products";
+import { botSites, missingBotSites } from "./bots";
 import catalogs from "./catalogs";
 
 type Row = Record<string, any>;
@@ -185,8 +186,15 @@ export type Issue = { id: string; product: string; message: string };
 export async function healthIssues(env: Env, now = Date.now()): Promise<Issue[]> {
   const issues: Issue[] = [];
   const since = utcDay(now - 10 * 86400_000);
-  const failed = await env.DB.prepare("SELECT job, key, note FROM runs WHERE status != 'ok' AND job IN ('rollup', 'stripe_reconcile', 'report', 'bots_day', 'bots_delivery') AND ran_at >= ?").bind(`${since}T00:00:00Z`).all<{ job: string; key: string; note: string }>();
+  const failed = await env.DB.prepare("SELECT job, key, note FROM runs WHERE status = 'failed' AND job IN ('rollup', 'stripe_reconcile', 'report', 'bots_day', 'bots_delivery') AND ran_at >= ?").bind(`${since}T00:00:00Z`).all<{ job: string; key: string; note: string }>();
   for (const r of failed.results ?? []) issues.push({ id: `${r.job}_failed:${r.key}`, product: "*", message: `${r.job} ${r.key} failed (${(r.note ?? "").slice(0, 80)})` });
+
+  for (const { site, hour } of await missingBotSites(env, botSites(env), now)) {
+    issues.push({
+      id: `bots_missing:${site.zone}`, product: site.id,
+      message: `${site.name}: bot collection missing for ${hour.replace("T", " ")}:00 UTC (${site.zone})`,
+    });
+  }
 
   /* A rollup that should have run and did not (cron broken). */
   const yesterday2 = utcDay(now - 2 * 86400_000);

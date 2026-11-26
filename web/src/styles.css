@@ -145,6 +145,10 @@
   --viz-money: oklch(0.7 0.15 38);
   --viz-signup: oklch(0.66 0.15 158);
   --viz-ai: oklch(0.6 0.19 293);
+  /* Categorical series (dataviz reference palette, validated light): one fixed slot per channel. */
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948;
+  --series-none: oklch(0.82 0 0);
   --up: oklch(0.55 0.14 155);
   --down: oklch(0.58 0.19 25);
   --radius: 0.625rem; /* Official b0 default: 10px. */
@@ -165,6 +169,9 @@
   --viz-money: oklch(0.74 0.14 38);
   --viz-signup: oklch(0.74 0.14 158);
   --viz-ai: oklch(0.72 0.15 293);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #0ca30c; --series-7: #9085e9; --series-8: #e66767;
+  --series-none: oklch(0.45 0 0);
   --up: oklch(0.76 0.14 155);
   --down: oklch(0.72 0.16 25);
   --background: oklch(0.145 0 0);
